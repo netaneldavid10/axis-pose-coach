@@ -7,8 +7,12 @@ import { WorkoutModal } from '@/components/WorkoutModal';
 import { ExerciseSelection } from '@/components/ExerciseSelection';
 import { ExerciseTracker } from '@/components/ExerciseTracker';
 import { WorkoutSummary } from '@/components/WorkoutSummary';
+import { ProfilePage } from '@/components/ProfilePage';
+import { StatisticsPage } from '@/components/StatisticsPage';
+import { PersonalCoachPage } from '@/components/PersonalCoachPage';
+import { SettingsPage } from '@/components/SettingsPage';
 
-type AppState = 'auth' | 'setup' | 'home' | 'workout-modal' | 'exercise-selection' | 'exercise-tracker' | 'workout-summary';
+type AppState = 'auth' | 'setup' | 'home' | 'workout-modal' | 'exercise-selection' | 'exercise-tracker' | 'workout-summary' | 'profile' | 'statistics' | 'coach' | 'settings';
 
 interface ExerciseData {
   name: string;
@@ -95,9 +99,10 @@ const Index = () => {
     return (
       <HomeScreen 
         onStartWorkout={() => setAppState('workout-modal')}
-        onShowProfile={() => {}}
-        onShowStats={() => {}}
-        onShowCoach={() => {}}
+        onShowProfile={() => setAppState('profile')}
+        onShowStats={() => setAppState('statistics')}
+        onShowCoach={() => setAppState('coach')}
+        onShowSettings={() => setAppState('settings')}
         onSignOut={handleSignOut}
       />
     );
@@ -143,6 +148,27 @@ const Index = () => {
         exercises={completedExercises}
         {...stats}
         onFinish={() => setAppState('home')}
+      />
+    );
+  }
+
+  if (appState === 'profile') {
+    return <ProfilePage onBack={() => setAppState('home')} />;
+  }
+
+  if (appState === 'statistics') {
+    return <StatisticsPage onBack={() => setAppState('home')} />;
+  }
+
+  if (appState === 'coach') {
+    return <PersonalCoachPage onBack={() => setAppState('home')} />;
+  }
+
+  if (appState === 'settings') {
+    return (
+      <SettingsPage 
+        onBack={() => setAppState('home')} 
+        onSignOut={handleSignOut}
       />
     );
   }

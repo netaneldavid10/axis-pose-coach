@@ -4,9 +4,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { CircularProgress } from '@/components/ui/circular-progress';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Play, Menu, User, BarChart3, Settings, MessageSquare } from 'lucide-react';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import exerciseFigure from '@/assets/exercise-figure.png';
+import { Play, Menu, User, BarChart3, Settings, MessageSquare, LogOut } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import axisLogo from '@/assets/axis-logo.png';
 
 interface Profile {
   first_name: string;
@@ -20,6 +20,7 @@ interface HomeScreenProps {
   onShowProfile: () => void;
   onShowStats: () => void;
   onShowCoach: () => void;
+  onShowSettings: () => void;
   onSignOut: () => void;
 }
 
@@ -28,6 +29,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onShowProfile, 
   onShowStats, 
   onShowCoach,
+  onShowSettings,
   onSignOut 
 }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -129,57 +131,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-primary/10">
       {/* Header */}
       <header className="flex items-center justify-between p-4">
-        <Sheet>
-          <SheetTrigger asChild>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="text-foreground">
               <Menu className="h-6 w-6" />
             </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72">
-            <nav className="space-y-4 mt-8">
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start text-left"
-                onClick={onShowProfile}
-              >
-                <User className="h-5 w-5 mr-3" />
-                My Profile
-              </Button>
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start text-left"
-                onClick={onShowStats}
-              >
-                <BarChart3 className="h-5 w-5 mr-3" />
-                Statistics Dashboard
-              </Button>
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start text-left"
-                onClick={onShowCoach}
-              >
-                <MessageSquare className="h-5 w-5 mr-3" />
-                Personal Coach
-              </Button>
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start text-left"
-              >
-                <Settings className="h-5 w-5 mr-3" />
-                Settings
-              </Button>
-              <div className="pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={onSignOut}
-                >
-                  Sign Out
-                </Button>
-              </div>
-            </nav>
-          </SheetContent>
-        </Sheet>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuItem onClick={onShowProfile}>
+              <User className="mr-2 h-4 w-4" />
+              My Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onShowStats}>
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Statistics Dashboard
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onShowCoach}>
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Personal Coach
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onShowSettings}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onSignOut} className="text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
           Axis
@@ -212,8 +193,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               >
                 <div className="text-center">
                   <img 
-                    src={exerciseFigure} 
-                    alt="Exercise Figure" 
+                    src={axisLogo} 
+                    alt="Axis Logo" 
                     className="w-16 h-16 mx-auto mb-2 opacity-80"
                   />
                   <div className="text-2xl font-bold text-primary">
