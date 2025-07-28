@@ -14,7 +14,158 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      exercise_sessions: {
+        Row: {
+          created_at: string | null
+          duration_seconds: number | null
+          exercise_name: string
+          feedback: string | null
+          form_accuracy: number | null
+          id: string
+          reps: number | null
+          workout_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          exercise_name: string
+          feedback?: string | null
+          form_accuracy?: number | null
+          id?: string
+          reps?: number | null
+          workout_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          exercise_name?: string
+          feedback?: string | null
+          form_accuracy?: number | null
+          id?: string
+          reps?: number | null
+          workout_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_sessions_workout_id_fkey"
+            columns: ["workout_id"]
+            isOneToOne: false
+            referencedRelation: "workouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          age: number | null
+          country: string | null
+          created_at: string | null
+          first_name: string
+          height: number | null
+          id: string
+          last_name: string
+          updated_at: string | null
+          user_id: string | null
+          weight: number | null
+          workout_goal_period: string | null
+          workout_goal_type: string | null
+          workout_goal_value: number | null
+        }
+        Insert: {
+          age?: number | null
+          country?: string | null
+          created_at?: string | null
+          first_name: string
+          height?: number | null
+          id?: string
+          last_name: string
+          updated_at?: string | null
+          user_id?: string | null
+          weight?: number | null
+          workout_goal_period?: string | null
+          workout_goal_type?: string | null
+          workout_goal_value?: number | null
+        }
+        Update: {
+          age?: number | null
+          country?: string | null
+          created_at?: string | null
+          first_name?: string
+          height?: number | null
+          id?: string
+          last_name?: string
+          updated_at?: string | null
+          user_id?: string | null
+          weight?: number | null
+          workout_goal_period?: string | null
+          workout_goal_type?: string | null
+          workout_goal_value?: number | null
+        }
+        Relationships: []
+      }
+      workout_routines: {
+        Row: {
+          created_at: string | null
+          exercises: Json
+          id: string
+          name: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          exercises: Json
+          id?: string
+          name: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          exercises?: Json
+          id?: string
+          name?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      workouts: {
+        Row: {
+          average_form_accuracy: number | null
+          calories_burned: number | null
+          created_at: string | null
+          duration_seconds: number | null
+          exercises: Json | null
+          id: string
+          total_reps: number | null
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          average_form_accuracy?: number | null
+          calories_burned?: number | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          exercises?: Json | null
+          id?: string
+          total_reps?: number | null
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          average_form_accuracy?: number | null
+          calories_burned?: number | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          exercises?: Json | null
+          id?: string
+          total_reps?: number | null
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
