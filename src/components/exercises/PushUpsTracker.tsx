@@ -49,40 +49,33 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // Orientation lock
+  // orientation lock
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
-  // Stability check
+  // stability check
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  // ---- Speech queue ----
+  // calibration refs
+  const calibratedArmAngleRef = useRef<number | null>(null);
+  const calibratedBackAngleRef = useRef<number | null>(null);
+
+  // speech
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
-  const speechQueue: string[] = [];
-  let speaking = false;
+  let lastSpoken: string | null = null;
 
-  function processSpeechQueue() {
-    if (speaking || speechQueue.length === 0 || !selectedVoice) return;
-    const text = speechQueue.shift()!;
+  function speak(text: string) {
+    if (!selectedVoice || lastSpoken === text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
-    utterance.pitch = 1;
-    utterance.rate = 1.15; // מהירות טבעית יותר
-    speaking = true;
-    utterance.onend = () => {
-      speaking = false;
-      processSpeechQueue();
-    };
+    utterance.pitch = 1;   // ברירת מחדל
+    utterance.rate = 1;    // ברירת מחדל
+    synth.cancel();
     synth.speak(utterance);
-  }
-
-  function speak(text: string) {
-    if (!text) return;
-    speechQueue.push(text);
-    processSpeechQueue();
+    lastSpoken = text;
   }
 
   function initVoices() {
@@ -100,7 +93,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2);
     const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2);
     const cosine = dot / (magAB * magCB);
-    return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
+    return Math.acos(cosine) * (180 / Math.PI);
   }
 
   function detectOrientation(lm: any[]) {
@@ -122,7 +115,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
       if (change > 0.25) {
         unstableFramesRef.current++;
-        if (unstableFramesRef.current < 10) return false; // unstable
+        if (unstableFramesRef.current < 10) return false; // לא יציב
       } else {
         unstableFramesRef.current = 0;
       }
@@ -209,6 +202,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         readyFramesRef.current++;
         setFeedback('Hold position...');
         if (readyFramesRef.current > 15) {
+          // כיול ידיים וגב
+          calibratedArmAngleRef.current = Math.max(leftElbowAngle, rightElbowAngle);
+          calibratedBackAngleRef.current = backAngle;
+
           workoutStateRef.current = 'up';
           setFeedback('Ready! Start push-ups');
           speak('Ready, start push-ups');
@@ -236,18 +233,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
 
-      // === ניתוח טכניקה רק אחרי חזרה ===
-      if (leftElbowAngle < 150 || rightElbowAngle < 150) {
+      // הערכת דיוק – רק אחרי חזרה!
+      const armBaseline = calibratedArmAngleRef.current ?? 150;
+      const backBaseline = calibratedBackAngleRef.current ?? 170;
+
+      if (Math.max(leftElbowAngle, rightElbowAngle) < armBaseline - 5) {
         speak('Straighten your arms fully');
         setFeedback('Straighten your arms fully');
       }
-      if (backAngle < 150 && orientation === 'side') {
+      if (backAngle < backBaseline - 15) {
         speak('Keep your back straight');
         setFeedback('Keep your back straight');
-      }
-      if (verticalDropL < 0.05 && verticalDropR < 0.05) {
-        speak('Go lower next time');
-        setFeedback('Go lower next time');
       }
     }
   }
@@ -323,20 +319,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
             <div className="relative bg-black rounded-lg overflow-hidden">
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
-
-              {/* Camera indicator */}
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
                 <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
-
-              {/* View mode overlay */}
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
                 {viewMode.toUpperCase()} VIEW
               </div>
-
-              {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
