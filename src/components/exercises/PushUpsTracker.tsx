@@ -49,10 +49,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // למניעת false positives
+  // transition control
   const prevShoulderWidthRef = useRef<number | null>(null);
-
-  // Orientation & transition
   let orientation: 'front' | 'side' = 'side';
   let transitionMode = false;
   let transitionFrames = 0;
@@ -122,7 +120,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // בדיקה לשינוי צורה -> Transition Mode
+    // Transition Mode
     const shoulderWidth = Math.abs(ls.x - rs.x);
     if (prevShoulderWidthRef.current) {
       const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
@@ -145,14 +143,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return; // לא סופרים בזמן transition
     }
 
-    // זיהוי יציב
+    // orientation יציב
     setViewMode(orientation);
 
     let downDetected = false;
     let upDetected = false;
 
     if (orientation === 'side') {
-      // SIDE: לוגיקה ישנה שעבדה
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
         (verticalDropL > 0.05 && verticalDropR > 0.05);
@@ -160,7 +157,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      // FRONT: זוויות + כתפיים מול האף
       const shoulderY = (ls.y + rs.y) / 2;
       const deltaShoulder = shoulderY - nose.y;
       downDetected =
@@ -191,21 +187,22 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ---- FSM ----
+    // ---- FSM עם anti-double-count ----
     if (cooldownFramesRef.current > 0) {
       cooldownFramesRef.current--;
-      return;
+      return; // מונע ספירה כפולה
     }
 
     if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
       setFeedback('Down!');
-    } else if (workoutStateRef.current === 'down' && upDetected) {
+    } 
+    else if (workoutStateRef.current === 'down' && upDetected) {
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
       setFeedback('Great push-up!');
       speak('Great push-up!');
       workoutStateRef.current = 'up';
-      cooldownFramesRef.current = 15;
+      cooldownFramesRef.current = 20; // נעילה ~0.6 שניות
     }
 
     if (backAngle < 30 && orientation === 'side') {
