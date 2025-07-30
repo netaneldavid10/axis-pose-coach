@@ -40,6 +40,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     feedback: []
   });
   const [feedback, setFeedback] = useState('');
+  const [viewMode, setViewMode] = useState<'front' | 'side'>('front');
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
@@ -104,7 +105,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
 
     const lm = results.poseLandmarks;
-    const viewMode = detectOrientationStable(lm);
+    const detectedView = detectOrientationStable(lm);
+    setViewMode(detectedView);
 
     const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
     const lh = lm[23], lk = lm[25];
@@ -131,7 +133,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     let downDetected = false;
     let upDetected = false;
 
-    if (viewMode === 'front') {
+    if (detectedView === 'front') {
       // לוגיקה שהייתה קודם ב-side: זוויות + vertical drop
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
@@ -182,7 +184,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       cooldownFramesRef.current = 15;
     }
 
-    if (backAngle < 30 && viewMode === 'side') {
+    if (backAngle < 30 && detectedView === 'side') {
       speak('Keep your body straight');
     }
   }
@@ -258,14 +260,23 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
             <div className="relative bg-black rounded-lg overflow-hidden">
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+              
+              {/* Camera indicator */}
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
                 <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
+
+              {/* View mode overlay */}
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
+                {viewMode.toUpperCase()} VIEW
+              </div>
+
+              {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute top-4 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
+                  <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
                     Reps: {exerciseData.reps}
                   </div>
                   <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg">
