@@ -56,6 +56,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
   const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
+  const repPendingRef = useRef(false);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -250,32 +251,25 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
-      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
-      setFeedback('Great push-up!');
-      speak('Great push-up!');
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
+      repPendingRef.current = true;
       feedbackGivenRef.current = false;
     }
 
-    // Feedback only after first rep
-    if (workoutStateRef.current === 'up' && lockDetected(lm) && exerciseData.reps > 0) {
-      if (!feedbackGivenRef.current) {
-        if (leftElbowAngle < 125 || rightElbowAngle < 125) {
-          speak('Straighten your arms fully');
-          setFeedback('Straighten your arms fully');
-        }
-        if (backAngle < 150 && orientation === 'side') {
-          speak('Keep your back straight');
-          setFeedback('Keep your back straight');
-        }
-        // more strict: require at least 12% drop
-        if ((verticalDropL < 0.12 && verticalDropR < 0.12)) {
-          speak('Go lower next time');
-          setFeedback('Go lower next time');
-        }
-        feedbackGivenRef.current = true;
+    if (workoutStateRef.current === 'up' && lockDetected(lm) && repPendingRef.current && !feedbackGivenRef.current) {
+      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
+
+      if (verticalDropL < 0.12 && verticalDropR < 0.12) {
+        speak('Go lower next time');
+        setFeedback('Go lower next time');
+      } else {
+        speak('Great push-up!');
+        setFeedback('Great push-up!');
       }
+
+      feedbackGivenRef.current = true;
+      repPendingRef.current = false;
     }
   }
 
