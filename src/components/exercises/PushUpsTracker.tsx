@@ -242,7 +242,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         const currentShoulderY = (ls.y + rs.y) / 2;
         const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
 
-        if (dropRatio < 0.25) {
+        if (dropRatio < 0.45) {
           setFeedback('Go lower next time');
           speak('Go lower next time');
         } else {
