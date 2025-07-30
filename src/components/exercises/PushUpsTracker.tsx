@@ -44,23 +44,27 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
+  // FSM states
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
+  // Orientation
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
+  // Stability
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
   const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
+
+  // Baseline + pause
+  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
   const pausedRef = useRef(false);
 
-  // baseline reference
-  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
-
+  // Speech
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
@@ -133,6 +137,31 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return true;
   }
 
+  function lockDetected(lm: any[]): boolean {
+    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const lh = lm[23], lk = lm[25];
+
+    const shoulderY = (ls.y + rs.y) / 2;
+    const hipY = (lh.y + lk.y) / 2;
+    const plankStraight = shoulderY < hipY - 0.1;
+
+    const dist = (a: any, b: any) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+    const leftDirect = dist(ls, lw);
+    const leftPath = dist(ls, le) + dist(le, lw);
+    const rightDirect = dist(rs, rw);
+    const rightPath = dist(rs, re) + dist(re, rw);
+    const armsStraight = leftDirect / leftPath > 0.95 && rightDirect / rightPath > 0.95;
+
+    const stable = isStable(lm);
+
+    if (plankStraight && armsStraight && stable) {
+      lockFramesRef.current++;
+      if (lockFramesRef.current > 12) return true;
+    } else {
+      lockFramesRef.current = 0;
+    }
+    return false;
+  }
   function onResults(results: any) {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -159,8 +188,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    
-    // check if user left baseline (stood up or changed posture)
+    // --- PAUSE LOGIC ---
     const baseline = lockBaselineRef.current;
     if (baseline) {
       const currentShoulderY = (ls.y + rs.y) / 2;
@@ -170,11 +198,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         speak("Hold steady...");
       }
     }
-
-    // if paused, skip FSM but keep rendering
     if (pausedRef.current) {
-      // allow drawing, orientation, etc., but block FSM transitions
-
       if (lockDetected(lm)) {
         pausedRef.current = false;
         lockBaselineRef.current = {
@@ -184,10 +208,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback("Ready again! Continue push-ups");
         speak("Ready again! Continue push-ups");
       }
-      // skip FSM transitions only, do not return entire onResults
-      return;
+      return; // skip FSM while paused
     }
 
+    // Orientation detection
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
     if (!visible) {
       lostFrames++;
@@ -195,7 +219,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback('Repositioning...');
         orientation = detectOrientation(lm);
         setViewMode(orientation);
-        lockBaselineRef.current = null; // reset baseline on orientation change
+        lockBaselineRef.current = null;
         lostFrames = 0;
         return;
       }
@@ -230,6 +254,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (deltaShoulder < 0.08);
     }
 
+    // Ready phase
     if (workoutStateRef.current === 'ready') {
       const shoulderY = (ls.y + rs.y) / 2;
       const hipY = (lh.y + lk.y) / 2;
@@ -261,13 +286,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
+    // FSM transitions
     if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
 
-      const baseline = lockBaselineRef.current;
       if (baseline) {
         const currentShoulderY = (ls.y + rs.y) / 2;
         const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
@@ -301,16 +326,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         }
         feedbackGivenRef.current = true;
 
-        // update baseline only when user reaches stable lock after rep
+        // update baseline when lock achieved
         lockBaselineRef.current = {
           shoulderY: (ls.y + rs.y) / 2,
           wristY: (lw.y + rw.y) / 2
         };
-        console.log("Baseline updated after rep:", lockBaselineRef.current);
       }
     }
   }
-
   const startExercise = async () => {
     setIsTracking(true);
     setStartTime(Date.now());
@@ -365,7 +388,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       onExerciseComplete(finalData);
     }, 2000);
   };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 p-4">
       <div className="max-w-4xl mx-auto">
@@ -383,16 +405,19 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
 
+              {/* Camera indicator */}
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
                 <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
 
+              {/* View mode overlay */}
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
                 {viewMode.toUpperCase()} VIEW
               </div>
 
+              {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
