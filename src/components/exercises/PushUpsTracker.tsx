@@ -44,38 +44,40 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // FSM
+  // FSM states
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // orientation lock
+  // Orientation lock
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
-  // stability check
+  // Stability check
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  // baseline לכתפיים
-  const baselineShoulderYRef = useRef<number | null>(null);
+  // ---- Lock Detection ----
+  const lockFramesRef = useRef(0);
 
-  // ==== מערכת תורים לדיבור ====
+  // ---- Speech queue ----
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
-  let isSpeaking = false;
+  let speaking = false;
 
-  function processQueue() {
-    if (isSpeaking || speechQueue.length === 0 || !selectedVoice) return;
+  function processSpeechQueue() {
+    if (speaking || speechQueue.length === 0 || !selectedVoice) return;
     const text = speechQueue.shift()!;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
-    isSpeaking = true;
+    utterance.pitch = 1;
+    utterance.rate = 1.15;
+    speaking = true;
     utterance.onend = () => {
-      isSpeaking = false;
-      processQueue();
+      speaking = false;
+      processSpeechQueue();
     };
     synth.speak(utterance);
   }
@@ -83,7 +85,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   function speak(text: string) {
     if (!text) return;
     speechQueue.push(text);
-    processQueue();
+    processSpeechQueue();
   }
 
   function initVoices() {
@@ -94,7 +96,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       null;
   }
 
-  // === חישוב זויות ===
   function angle(a: any, b: any, c: any) {
     const ab = { x: b.x - a.x, y: b.y - a.y };
     const cb = { x: b.x - c.x, y: b.y - c.y };
@@ -102,7 +103,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2);
     const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2);
     const cosine = dot / (magAB * magCB);
-    return Math.acos(cosine) * (180 / Math.PI);
+    return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
 
   function detectOrientation(lm: any[]) {
@@ -114,7 +115,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // יציבות גוף / מניעת קרבה למצלמה
+  // ---- יציבות הגוף ----
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
@@ -122,7 +123,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.25) { // שינוי חד (קרבה/הרחקה)
+      if (change > 0.25) {
         unstableFramesRef.current++;
         if (unstableFramesRef.current < 10) return false;
       } else {
@@ -131,6 +132,35 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     prevScaleRef.current = scale;
     return true;
+  }
+
+  // ---- Lock Detection ----
+  function lockDetected(lm: any[]): boolean {
+    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const lh = lm[23], lk = lm[25];
+
+    const shoulderY = (ls.y + rs.y) / 2;
+    const hipY = (lh.y + lk.y) / 2;
+    const plankStraight = shoulderY < hipY - 0.1;
+
+    const dist = (a: any, b: any) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+    const leftDirect = dist(ls, lw);
+    const leftPath = dist(ls, le) + dist(le, lw);
+    const rightDirect = dist(rs, rw);
+    const rightPath = dist(rs, re) + dist(re, rw);
+    const armsStraight = leftDirect / leftPath > 0.95 && rightDirect / rightPath > 0.95;
+
+    const stable = isStable(lm);
+
+    if (plankStraight && armsStraight && stable) {
+      lockFramesRef.current++;
+      if (lockFramesRef.current > 12) {
+        return true;
+      }
+    } else {
+      lockFramesRef.current = 0;
+    }
+    return false;
   }
 
   function onResults(results: any) {
@@ -159,7 +189,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // ---- Orientation Lock ----
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
     if (!visible) {
       lostFrames++;
@@ -175,7 +204,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     setViewMode(orientation);
 
-    // ---- Stability ----
     if (!isStable(lm)) {
       setFeedback('Repositioning...');
       return;
@@ -202,7 +230,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (deltaShoulder < 0.08);
     }
 
-    // ---- Ready ----
     if (workoutStateRef.current === 'ready') {
       const shoulderY = (ls.y + rs.y) / 2;
       const hipY = (lh.y + lk.y) / 2;
@@ -214,9 +241,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           workoutStateRef.current = 'up';
           setFeedback('Ready! Start push-ups');
           speak('Ready, start push-ups');
-
-          // baseline לכתפיים בתחילת התרגיל
-          baselineShoulderYRef.current = shoulderY;
         }
       } else {
         readyFramesRef.current = 0;
@@ -225,7 +249,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ---- FSM ----
     if (cooldownFramesRef.current > 0) {
       cooldownFramesRef.current--;
       return;
@@ -235,30 +258,26 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
-      // חזרה הושלמה
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
       setFeedback('Great push-up!');
       speak('Great push-up!');
-
-      // בדיקת דיוק רק אחרי 0.8 שניות
-      setTimeout(() => {
-        if (baselineShoulderYRef.current) {
-          const currentShoulderY = (ls.y + rs.y) / 2;
-          const diff = currentShoulderY - baselineShoulderYRef.current;
-
-          if (backAngle < 150 && orientation === 'side') {
-            speak('Keep your back straight');
-            setFeedback('Straighten your back');
-          }
-          if (diff > 0.03) {
-            speak('Straighten your arms');
-            setFeedback('Straighten your arms');
-          }
-        }
-      }, 800);
-
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
+    }
+
+    if (workoutStateRef.current === 'up' && lockDetected(lm)) {
+      if (leftElbowAngle < 150 || rightElbowAngle < 150) {
+        speak('Straighten your arms fully');
+        setFeedback('Straighten your arms fully');
+      }
+      if (backAngle < 150 && orientation === 'side') {
+        speak('Keep your back straight');
+        setFeedback('Keep your back straight');
+      }
+      if (verticalDropL < 0.05 && verticalDropR < 0.05) {
+        speak('Go lower next time');
+        setFeedback('Go lower next time');
+      }
     }
   }
 
@@ -333,14 +352,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
             <div className="relative bg-black rounded-lg overflow-hidden">
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
                 <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
+
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
                 {viewMode.toUpperCase()} VIEW
               </div>
+
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
