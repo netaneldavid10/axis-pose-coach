@@ -1,18 +1,15 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Camera as CameraIcon, Square, RotateCcw } from 'lucide-react';
+import { Camera, Square, RotateCcw } from 'lucide-react';
 
-declare global {
-  interface Window {
-    Pose: any;
-    Camera: any;
-    drawConnectors: any;
-    drawLandmarks: any;
-    POSE_CONNECTIONS: any;
-  }
-}
+// @ts-ignore – נטען מדפדפן (Lovable מייצא לדפדפן)
+declare const Pose: any;
+declare const CameraMediapipe: any;
+declare const drawConnectors: any;
+declare const drawLandmarks: any;
+declare const POSE_CONNECTIONS: any;
 
 interface ExerciseData {
   reps: number;
@@ -43,7 +40,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // ===== states for mediapipe logic =====
+  // =============== Mediapipe logic states ===============
   let state: 'start' | 'up' | 'down' = 'start';
   let downFrames = 0;
   let cooldownFrames = 0;
@@ -136,8 +133,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const lh = lm[23],
       lk = lm[25];
 
-    window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
-    window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
+    drawConnectors(ctx, lm, POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+    drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
     const leftElbowAngle = angle(ls, le, lw);
     const rightElbowAngle = angle(rs, re, rw);
@@ -202,31 +199,16 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
   }
 
-  const startExercise = async () => {
+  const startExercise = () => {
     setIsTracking(true);
     setStartTime(Date.now());
     setFeedback('Exercise started! Keep good form.');
 
+    // init mediapipe
     if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoices;
     initVoices();
 
-    // שלב 1: הפעל מצלמה רגילה
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480 }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch (err) {
-      console.error("Camera error:", err);
-      setFeedback("Unable to access camera");
-      return;
-    }
-
-    // שלב 2: הפעלת Pose
-    const pose = new window.Pose({
+    const pose = new Pose({
       locateFile: (file: string) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
     });
@@ -240,11 +222,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     });
     pose.onResults(onResults);
 
-    // שלב 3: Mediapipe Camera
     if (videoRef.current) {
-      const camera = new window.Camera(videoRef.current, {
+      const camera = new (window as any).Camera(videoRef.current, {
         onFrame: async () => {
-          await pose.send({ image: videoRef.current! });
+          await pose.send({ image: videoRef.current });
         },
         width: 640,
         height: 480
@@ -277,6 +258,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 p-4">
       <div className="max-w-4xl mx-auto">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <Button variant="outline" onClick={onBack}>
             ← Back
@@ -285,21 +267,28 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           <div className="w-16" />
         </div>
 
+        {/* Camera Feed */}
         <Card className="mb-6">
           <CardContent className="p-6">
             <div className="relative bg-black rounded-lg overflow-hidden">
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+
+              {/* Camera indicator */}
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
-                <CameraIcon className="h-4 w-4" />
+                <Camera className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
+
+              {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
+                  {/* Rep counter */}
                   <div className="absolute top-4 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
                     Reps: {exerciseData.reps}
                   </div>
+                  {/* Feedback */}
                   <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg">
                     {feedback}
                   </div>
@@ -309,13 +298,15 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           </CardContent>
         </Card>
 
+        {/* Exercise Info */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Exercise Instructions</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Start in plank position. Lower your chest to the ground. Push back up while maintaining straight line.
+              Start in plank position. Lower your chest to the ground. Push back up while maintaining
+              straight line.
             </p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
@@ -338,6 +329,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           </CardContent>
         </Card>
 
+        {/* Controls */}
         <div className="flex gap-4 justify-center">
           {!isTracking ? (
             <Button
@@ -345,7 +337,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
               onClick={startExercise}
               className="bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white px-8 py-4 text-lg font-semibold rounded-2xl"
             >
-              <CameraIcon className="h-6 w-6 mr-3" />
+              <Camera className="h-6 w-6 mr-3" />
               Start Exercise
             </Button>
           ) : (
