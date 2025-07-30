@@ -116,9 +116,15 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
 
-    // 🚫 מניעת חזרות לא ריאליסטיות כשקרוב מדי
+    // 🚫 מניעת חזרות כשקרוב מדי לכללית
     if (scale > 0.7) {
       setFeedback('Too close - move back');
+      return false;
+    }
+
+    // 🚫 מניעת חזרות כשהכתפיים תופסות חלק גדול מדי מהמסך
+    if (shoulderDist > 0.6) {
+      setFeedback('Too close - shoulders too wide');
       return false;
     }
 
