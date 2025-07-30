@@ -49,7 +49,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // מניעת false positives בהתקרבות
+  // orientation stabilization
+  let orientation: 'front' | 'side' = 'side';
+  let orientationCandidate: 'front' | 'side' = 'side';
+  let stableFrames = 0;
+
+  // למניעת false positives בהתקרבות
   const prevShoulderWidthRef = useRef<number | null>(null);
 
   const synth = window.speechSynthesis;
@@ -88,7 +93,23 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const totalWidth = Math.max(shoulderDist, hipDist);
     const totalHeight = Math.abs(lm[0].y - lm[24].y);
     const ratio = totalWidth / totalHeight;
-    return ratio > 0.6 ? 'front' : 'side';
+
+    let candidate: 'front' | 'side' = orientation;
+    if (ratio > 0.65) candidate = 'front';
+    else if (ratio < 0.55) candidate = 'side';
+    // בין 0.55–0.65 → שומרים על orientation הנוכחי
+
+    if (candidate === orientationCandidate) {
+      stableFrames++;
+      if (stableFrames >= 10) {
+        orientation = candidate;
+      }
+    } else {
+      orientationCandidate = candidate;
+      stableFrames = 0;
+    }
+
+    return orientation;
   }
 
   function onResults(results: any) {
@@ -108,7 +129,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const detectedView = detectOrientationStable(lm);
     setViewMode(detectedView);
 
-    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const ls = lm[11], rs = lm[12], le = lm[13], rw = lm[16], lw = lm[15], re = lm[14];
     const lh = lm[23], lk = lm[25];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
