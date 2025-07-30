@@ -56,6 +56,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
   const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
+  const pausedRef = useRef(false);
 
   // baseline reference
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
@@ -157,6 +158,32 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropL = ls.y - lw.y;
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
+
+    
+    // check if user left baseline (stood up or changed posture)
+    const baseline = lockBaselineRef.current;
+    if (baseline) {
+      const currentShoulderY = (ls.y + rs.y) / 2;
+      if (currentShoulderY < baseline.shoulderY - 0.02 && !pausedRef.current) {
+        pausedRef.current = true;
+        setFeedback("Hold steady...");
+        speak("Hold steady...");
+      }
+    }
+
+    // if paused, wait until stable lock detected again
+    if (pausedRef.current) {
+      if (lockDetected(lm)) {
+        pausedRef.current = false;
+        lockBaselineRef.current = {
+          shoulderY: (ls.y + rs.y) / 2,
+          wristY: (lw.y + rw.y) / 2
+        };
+        setFeedback("Ready again! Continue push-ups");
+        speak("Ready again! Continue push-ups");
+      }
+      return; // skip rest while paused
+    }
 
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
     if (!visible) {
