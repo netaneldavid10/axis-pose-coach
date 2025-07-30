@@ -2,9 +2,8 @@ import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { Camera, Square, RotateCcw } from 'lucide-react';
+import { Camera as CameraIcon, Square, RotateCcw } from 'lucide-react';
 
-// נטען מ־index.html
 declare global {
   interface Window {
     Pose: any;
@@ -44,11 +43,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // ==== refs לשמירה לאורך כל חיי הקומפוננטה ====
-  const stateRef = useRef<'start' | 'up' | 'down'>('start');
-  const downFramesRef = useRef(0);
+  // refs לשמירה מתמשכת
+  const workoutStateRef = useRef<'waiting' | 'up' | 'down'>('waiting');
   const cooldownFramesRef = useRef(0);
-  const lastSpokenRef = useRef('');
+  const downFramesRef = useRef(0);
   const shoulderDownYRef = useRef<number | null>(null);
   const shoulderUpYRef = useRef<number | null>(null);
 
@@ -56,15 +54,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   let selectedVoice: SpeechSynthesisVoice | null = null;
 
   function speak(text: string) {
-    if (text === lastSpokenRef.current || !selectedVoice) return;
     const utterance = new SpeechSynthesisUtterance(text);
+    if (!selectedVoice) return;
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
-    utterance.pitch = 1;
-    utterance.rate = 0.9;
     synth.cancel();
     synth.speak(utterance);
-    lastSpokenRef.current = text;
   }
 
   function initVoices() {
@@ -86,32 +81,26 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   }
 
   function detectOrientationStable(lm: any[]) {
-    const visL = lm[11].visibility + lm[13].visibility;
-    const visR = lm[12].visibility + lm[14].visibility;
-    let candidate = 'side';
-    if (
-      lm[11].visibility > 0.6 &&
-      lm[12].visibility > 0.6 &&
-      lm[13].visibility > 0.6 &&
-      lm[14].visibility > 0.6
-    ) {
-      candidate = 'front';
-    } else if ((visL > 1.2 && visR < 0.5) || (visR > 1.2 && visL < 0.5)) {
-      candidate = 'side';
-    }
-    return candidate;
+    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
+    const hipDist = Math.abs(lm[23].x - lm[24].x);
+    const totalWidth = Math.max(shoulderDist, hipDist);
+    const totalHeight = Math.abs(lm[0].y - lm[24].y);
+
+    const ratio = totalWidth / totalHeight;
+    // ✅ תיקון: הפוך
+    return ratio > 0.6 ? 'front' : 'side';
   }
 
   function onResults(results: any) {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-    if (!results.poseLandmarks || results.poseLandmarks.length < 8) {
+    if (!results.poseLandmarks || results.poseLandmarks.length < 25) {
       setFeedback('Move back - not enough data');
-      speak('Please move back');
       return;
     }
 
@@ -141,30 +130,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      const avgShoulderY = (ls.y + rs.y) / 2;
-      const threshold = 0.015; // סף קטן יותר לפרונט
-
-      // debug: מציג ערך shoulderY
-      ctx.fillStyle = "yellow";
-      ctx.font = "16px Arial";
-      ctx.fillText(`ShoulderY: ${avgShoulderY.toFixed(3)}`, 10, 20);
-
-      if (stateRef.current === 'start' || stateRef.current === 'up') {
-        if (shoulderUpYRef.current === null || avgShoulderY > shoulderUpYRef.current + threshold) {
-          downFramesRef.current++;
-          if (downFramesRef.current >= 5) {
-            downDetected = true;
-            shoulderDownYRef.current = avgShoulderY;
-          }
-        } else {
-          downFramesRef.current = 0;
-        }
-      } else if (stateRef.current === 'down') {
-        if (shoulderDownYRef.current !== null && avgShoulderY < shoulderDownYRef.current - threshold) {
-          upDetected = true;
-          shoulderUpYRef.current = avgShoulderY;
-        }
+      const shoulderY = (ls.y + rs.y) / 2;
+      if (workoutStateRef.current === 'waiting') {
+        shoulderUpYRef.current = shoulderY;
+        shoulderDownYRef.current = shoulderY;
       }
+      const threshold = 0.018;
+      downDetected = shoulderY > (shoulderUpYRef.current ?? shoulderY) + threshold;
+      upDetected = shoulderY < (shoulderDownYRef.current ?? shoulderY) - threshold;
     }
 
     if (cooldownFramesRef.current > 0) {
@@ -172,18 +145,18 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    if (stateRef.current === 'start' && downDetected) {
-      stateRef.current = 'down';
+    // FSM: waiting → down → up
+    if (workoutStateRef.current === 'waiting' && downDetected) {
+      workoutStateRef.current = 'down';
       setFeedback('Down!');
-    } else if (stateRef.current === 'down' && upDetected && downFramesRef.current >= 5) {
-      stateRef.current = 'up';
+    } else if (workoutStateRef.current === 'down' && upDetected) {
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
       setFeedback('Great push-up!');
       speak('Great push-up!');
-      downFramesRef.current = 0;
-      cooldownFramesRef.current = 10;
-    } else if (stateRef.current === 'up' && downDetected) {
-      stateRef.current = 'down';
+      workoutStateRef.current = 'up';
+      cooldownFramesRef.current = 15;
+    } else if (workoutStateRef.current === 'up' && downDetected) {
+      workoutStateRef.current = 'down';
       setFeedback('Down!');
     }
 
@@ -264,7 +237,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
-                <Camera className="h-4 w-4" />
+                <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
@@ -318,7 +291,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
               onClick={startExercise}
               className="bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white px-8 py-4 text-lg font-semibold rounded-2xl"
             >
-              <Camera className="h-6 w-6 mr-3" />
+              <CameraIcon className="h-6 w-6 mr-3" />
               Start Exercise
             </Button>
           ) : (
