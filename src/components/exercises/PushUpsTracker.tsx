@@ -111,14 +111,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // ⚡ שדרוג יציבות – כולל טווח סקייל
+  // ⚡ יציבות – כולל טווח סקייל ואיפוס מונה
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
 
-    // ✅ עצירה אם קרוב/רחוק מדי
-    if (scale < 0.15 || scale > 0.5) {
+    console.log("Scale:", scale);
+
+    // טווח קרוב/רחוק מדי
+    if (scale < 0.1 || scale > 0.65) {
+      unstableFramesRef.current++;
       return false;
     }
 
@@ -127,10 +130,11 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       if (change > 0.25) {
         unstableFramesRef.current++;
         if (unstableFramesRef.current < 10) return false;
-      } else {
-        unstableFramesRef.current = 0;
       }
     }
+
+    // ✅ אם יציב – לאפס מונה
+    unstableFramesRef.current = 0;
     prevScaleRef.current = scale;
     return true;
   }
@@ -177,11 +181,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     setViewMode(orientation);
 
-    // ⚡ אם לא יציב או לא בטווח – עוצרים ספירה
+    // ⚡ יציבות – לא עוצרים return, רק הודעה
     const stable = isStable(lm);
     if (!stable) {
       setFeedback('Repositioning...');
-      return;
     }
 
     let downDetected = false;
@@ -205,82 +208,85 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (deltaShoulder < 0.08);
     }
 
-    if (workoutStateRef.current === 'ready') {
-      const shoulderY = (ls.y + rs.y) / 2;
-      const hipY = (lh.y + lk.y) / 2;
-      const bodyStraight = backAngle > 150;
-      if (shoulderY < hipY - 0.1 && bodyStraight) {
-        readyFramesRef.current++;
-        setFeedback('Hold position...');
-        if (readyFramesRef.current > 15) {
-          workoutStateRef.current = 'up';
-          setFeedback('Ready! Start push-ups');
-          speak('Ready, start push-ups');
+    // 🚫 לוגיקה של חזרות תרוץ רק אם יציב
+    if (stable) {
+      if (workoutStateRef.current === 'ready') {
+        const shoulderY = (ls.y + rs.y) / 2;
+        const hipY = (lh.y + lk.y) / 2;
+        const bodyStraight = backAngle > 150;
+        if (shoulderY < hipY - 0.1 && bodyStraight) {
+          readyFramesRef.current++;
+          setFeedback('Hold position...');
+          if (readyFramesRef.current > 15) {
+            workoutStateRef.current = 'up';
+            setFeedback('Ready! Start push-ups');
+            speak('Ready, start push-ups');
 
-          if (!lockBaselineRef.current) {
-            lockBaselineRef.current = {
-              shoulderY: (ls.y + rs.y) / 2,
-              wristY: (lw.y + rw.y) / 2
-            };
+            if (!lockBaselineRef.current) {
+              lockBaselineRef.current = {
+                shoulderY: (ls.y + rs.y) / 2,
+                wristY: (lw.y + rw.y) / 2
+              };
+            }
           }
+        } else {
+          readyFramesRef.current = 0;
+          setFeedback('Get into position');
         }
-      } else {
-        readyFramesRef.current = 0;
-        setFeedback('Get into position');
+        return;
       }
-      return;
-    }
 
-    if (cooldownFramesRef.current > 0) {
-      cooldownFramesRef.current--;
-      return;
-    }
+      if (cooldownFramesRef.current > 0) {
+        cooldownFramesRef.current--;
+        return;
+      }
 
-    if (workoutStateRef.current === 'up' && downDetected) {
-      workoutStateRef.current = 'down';
-      setFeedback('Down!');
-    } else if (workoutStateRef.current === 'down' && upDetected) {
-      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
+      if (workoutStateRef.current === 'up' && downDetected) {
+        workoutStateRef.current = 'down';
+        setFeedback('Down!');
+      } else if (workoutStateRef.current === 'down' && upDetected) {
+        setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
 
-      const baseline = lockBaselineRef.current;
-      if (baseline) {
-        const currentShoulderY = (ls.y + rs.y) / 2;
-        const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
+        const baseline = lockBaselineRef.current;
+        if (baseline) {
+          const currentShoulderY = (ls.y + rs.y) / 2;
+          const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
 
-        if (dropRatio < 0.45) {
-          setFeedback('Go lower next time');
-          speak('Go lower next time');
+          if (dropRatio < 0.45) {
+            setFeedback('Go lower next time');
+            speak('Go lower next time');
+          } else {
+            setFeedback('Great push-up!');
+            speak('Great push-up!');
+          }
         } else {
           setFeedback('Great push-up!');
           speak('Great push-up!');
         }
-      } else {
-        setFeedback('Great push-up!');
-        speak('Great push-up!');
+
+        workoutStateRef.current = 'up';
+        cooldownFramesRef.current = 20;
+        feedbackGivenRef.current = false;
       }
 
-      workoutStateRef.current = 'up';
-      cooldownFramesRef.current = 20;
-      feedbackGivenRef.current = false;
-    }
+      if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
+        if (!feedbackGivenRef.current) {
+          if (leftElbowAngle < 125 || rightElbowAngle < 125) {
+            speak('Straighten your arms fully');
+            setFeedback('Straighten your arms fully');
+          }
+          if (backAngle < 150 && orientation === 'side') {
+            speak('Keep your back straight');
+            setFeedback('Keep your back straight');
+          }
+          feedbackGivenRef.current = true;
 
-    if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
-      if (!feedbackGivenRef.current) {
-        if (leftElbowAngle < 125 || rightElbowAngle < 125) {
-          speak('Straighten your arms fully');
-          setFeedback('Straighten your arms fully');
+          lockBaselineRef.current = {
+            shoulderY: (ls.y + rs.y) / 2,
+            wristY: (lw.y + rw.y) / 2
+          };
+          console.log("Baseline updated after rep:", lockBaselineRef.current);
         }
-        if (backAngle < 150 && orientation === 'side') {
-          speak('Keep your back straight');
-          setFeedback('Keep your back straight');
-        }
-        feedbackGivenRef.current = true;
-
-        lockBaselineRef.current = {
-          shoulderY: (ls.y + rs.y) / 2,
-          wristY: (lw.y + rw.y) / 2
-        };
-        console.log("Baseline updated after rep:", lockBaselineRef.current);
       }
     }
   }
