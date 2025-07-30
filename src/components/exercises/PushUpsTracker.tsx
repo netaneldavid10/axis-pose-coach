@@ -49,13 +49,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
+  // למניעת false positives מהתקרבות
+  const prevShoulderWidthRef = useRef<number | null>(null);
+
   // orientation stabilization
   let orientation: 'front' | 'side' = 'side';
   let orientationCandidate: 'front' | 'side' = 'side';
   let stableFrames = 0;
-
-  // למניעת false positives בהתקרבות
-  const prevShoulderWidthRef = useRef<number | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -100,14 +100,11 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (candidate === orientationCandidate) {
       stableFrames++;
-      if (stableFrames >= 10) {
-        orientation = candidate;
-      }
+      if (stableFrames >= 8) orientation = candidate;
     } else {
       orientationCandidate = candidate;
       stableFrames = 0;
     }
-
     return orientation;
   }
 
@@ -140,13 +137,11 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // --- מניעת false reps מהתקרבות ---
+    // מניעת false reps מהתקרבות
     const shoulderWidth = Math.abs(ls.x - rs.x);
     if (prevShoulderWidthRef.current) {
       const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
-      if (change > 0.2) {
-        return;
-      }
+      if (change > 0.2) return;
     }
     prevShoulderWidthRef.current = shoulderWidth;
 
@@ -154,7 +149,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     let upDetected = false;
 
     if (detectedView === 'side') {
-      // SIDE: זוויות + vertical drop
+      // SIDE: הלוגיקה שעבדה לך
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
         (verticalDropL > 0.05 && verticalDropR > 0.05);
@@ -162,14 +157,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      // FRONT: זוויות + shoulder drop מול האף
+      // FRONT: משולב זוויות + כתפיים מול האף
       const shoulderY = (ls.y + rs.y) / 2;
       const deltaShoulder = shoulderY - nose.y;
 
       downDetected =
         (leftElbowAngle < 120 && rightElbowAngle < 120) ||
         (deltaShoulder > 0.12);
-
       upDetected =
         (leftElbowAngle > 150 && rightElbowAngle > 150) ||
         (deltaShoulder < 0.08);
