@@ -44,16 +44,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // FSM states
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // Orientation
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
-  // Stability
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
@@ -63,6 +60,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   // Baseline + pause
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number; backAngle: number } | null>(null);
   const pausedRef = useRef(false);
+
+  // Penalties counter
+  const penaltiesRef = useRef(0);
 
   // Speech
   const synth = window.speechSynthesis;
@@ -162,6 +162,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     return false;
   }
+
   function onResults(results: any) {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -204,7 +205,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         lockBaselineRef.current = {
           shoulderY: (ls.y + rs.y) / 2,
           wristY: (lw.y + rw.y) / 2,
-          backAngle: backAngle
+          backAngle
         };
         setFeedback("Ready again! Continue push-ups");
         speak("Ready again! Continue push-ups");
@@ -272,7 +273,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
             lockBaselineRef.current = {
               shoulderY: (ls.y + rs.y) / 2,
               wristY: (lw.y + rw.y) / 2,
-              backAngle: backAngle
+              backAngle
             };
           }
         }
@@ -287,49 +288,34 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       cooldownFramesRef.current--;
       return;
     }
+
     // FSM transitions
     if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
-      let deductions = 0;
-      let feedbackMsg = 'Great push-up!';
+      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
 
       if (baseline) {
         const currentShoulderY = (ls.y + rs.y) / 2;
         const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
 
         if (dropRatio < 0.45) {
-          feedbackMsg = 'Go lower next time';
-          deductions++;
+          setFeedback('Go lower next time');
+          speak('Go lower next time');
+          penaltiesRef.current++;
+        } else {
+          setFeedback('Great push-up!');
+          speak('Great push-up!');
         }
-
-        const currentBackAngle = backAngle;
-        const backDeviation = Math.abs(currentBackAngle - (baseline.backAngle || 180));
-        if (backDeviation > 15) {
-          feedbackMsg = 'Keep your back straight';
-          deductions++;
-        }
+      } else {
+        setFeedback('Great push-up!');
+        speak('Great push-up!');
       }
-
-      setExerciseData(prev => {
-        const newReps = prev.reps + 1;
-        const accuracy = Math.max(0, 100 - deductions * 2.3);
-        return { ...prev, reps: newReps, formAccuracy: accuracy };
-      });
-
-      setFeedback(feedbackMsg);
-      speak(feedbackMsg);
 
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
       feedbackGivenRef.current = false;
-
-      lockBaselineRef.current = {
-        shoulderY: (ls.y + rs.y) / 2,
-        wristY: (lw.y + rw.y) / 2,
-        backAngle: backAngle
-      };
     }
 
     if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
@@ -337,17 +323,22 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         if (leftElbowAngle < 125 || rightElbowAngle < 125) {
           speak('Straighten your arms fully');
           setFeedback('Straighten your arms fully');
+          penaltiesRef.current++;
         }
-        if (backAngle < 150 && orientation === 'side') {
-          speak('Keep your back straight');
-          setFeedback('Keep your back straight');
+        if (baseline) {
+          const backDeviation = Math.abs(backAngle - baseline.backAngle);
+          if (backDeviation > 15) {
+            speak('Keep your back straight');
+            setFeedback('Keep your back straight');
+            penaltiesRef.current++;
+          }
         }
         feedbackGivenRef.current = true;
 
         lockBaselineRef.current = {
           shoulderY: (ls.y + rs.y) / 2,
           wristY: (lw.y + rw.y) / 2,
-          backAngle: backAngle
+          backAngle
         };
       }
     }
@@ -390,11 +381,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const stopExercise = () => {
     setIsTracking(false);
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+    const penalties = penaltiesRef.current;
+    const accuracy = Math.max(0, 100 - penalties * 2.3);
+
     const finalData: ExerciseData = {
       ...exerciseData,
       duration,
-      formAccuracy: exerciseData.formAccuracy,
-      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
+      formAccuracy: accuracy,
+      feedback: []
     };
     setExerciseData(finalData);
     toast({
@@ -407,6 +401,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       onExerciseComplete(finalData);
     }, 2000);
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 p-4">
       <div className="max-w-4xl mx-auto">
@@ -424,19 +419,16 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
 
-              {/* Camera indicator */}
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
                 <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
 
-              {/* View mode overlay */}
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
                 {viewMode.toUpperCase()} VIEW
               </div>
 
-              {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
@@ -453,7 +445,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle
             <CardTitle>Exercise Instructions</CardTitle>
           </CardHeader>
           <CardContent>
