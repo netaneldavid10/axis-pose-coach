@@ -49,8 +49,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // transition control
-  const prevShoulderWidthRef = useRef<number | null>(null);
+  // orientation lock
+  const prevBodyWidthRef = useRef<number | null>(null);
   let orientation: 'front' | 'side' = 'side';
   let transitionMode = false;
   let transitionFrames = 0;
@@ -109,7 +109,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     const lm = results.poseLandmarks;
     const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
-    const lh = lm[23], lk = lm[25], nose = lm[0];
+    const lh = lm[23], rk = lm[24], lk = lm[25], nose = lm[0];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
@@ -120,17 +120,21 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // --- מניעת false reps מהתקרבות למצלמה ---
+    // --- body width (shoulders + hips) ---
     const shoulderWidth = Math.abs(ls.x - rs.x);
-    if (prevShoulderWidthRef.current) {
-      const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
+    const hipWidth = Math.abs(lh.x - rk.x);
+    const bodyWidth = (shoulderWidth + hipWidth) / 2;
 
-      if (change > 0.35) { // threshold מוגדל - רק שינוי אמיתי במצלמה
+    if (prevBodyWidthRef.current) {
+      const change = Math.abs(bodyWidth - prevBodyWidthRef.current) / prevBodyWidthRef.current;
+
+      // רק שינוי אמיתי של כל הגוף → repositioning
+      if (change > 0.45) {
         transitionMode = true;
         transitionFrames = 0;
       }
     }
-    prevShoulderWidthRef.current = shoulderWidth;
+    prevBodyWidthRef.current = bodyWidth;
 
     if (transitionMode) {
       transitionFrames++;
@@ -141,7 +145,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         transitionMode = false;
         setFeedback('Orientation locked: ' + orientation.toUpperCase());
       }
-      return; // לא סופרים חזרות בזמן repositioning
+      return;
     }
 
     // orientation יציב
@@ -188,22 +192,21 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ---- FSM עם anti-double-count ----
+    // ---- FSM ----
     if (cooldownFramesRef.current > 0) {
       cooldownFramesRef.current--;
-      return; // מונע ספירה כפולה
+      return;
     }
 
     if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
       setFeedback('Down!');
-    } 
-    else if (workoutStateRef.current === 'down' && upDetected) {
+    } else if (workoutStateRef.current === 'down' && upDetected) {
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
       setFeedback('Great push-up!');
       speak('Great push-up!');
       workoutStateRef.current = 'up';
-      cooldownFramesRef.current = 20; // נעילה ~0.6 שניות
+      cooldownFramesRef.current = 20;
     }
 
     if (backAngle < 30 && orientation === 'side') {
