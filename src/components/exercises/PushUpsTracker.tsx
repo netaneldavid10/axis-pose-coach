@@ -97,7 +97,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     let candidate: 'front' | 'side' = orientation;
     if (ratio > 0.65) candidate = 'front';
     else if (ratio < 0.55) candidate = 'side';
-    // בין 0.55–0.65 → שומרים על orientation הנוכחי
 
     if (candidate === orientationCandidate) {
       stableFrames++;
@@ -129,8 +128,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const detectedView = detectOrientationStable(lm);
     setViewMode(detectedView);
 
-    const ls = lm[11], rs = lm[12], le = lm[13], rw = lm[16], lw = lm[15], re = lm[14];
-    const lh = lm[23], lk = lm[25];
+    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const lh = lm[23], lk = lm[25], nose = lm[0];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
@@ -163,9 +162,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      // FRONT: זוויות בלבד
-      downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120);
-      upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150);
+      // FRONT: זוויות + shoulder drop מול האף
+      const shoulderY = (ls.y + rs.y) / 2;
+      const deltaShoulder = shoulderY - nose.y;
+
+      downDetected =
+        (leftElbowAngle < 120 && rightElbowAngle < 120) ||
+        (deltaShoulder > 0.12);
+
+      upDetected =
+        (leftElbowAngle > 150 && rightElbowAngle > 150) ||
+        (deltaShoulder < 0.08);
     }
 
     // ---- Ready ----
