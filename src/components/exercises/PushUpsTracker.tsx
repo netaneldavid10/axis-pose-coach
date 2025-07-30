@@ -120,11 +120,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // Transition Mode
+    // --- מניעת false reps מהתקרבות למצלמה ---
     const shoulderWidth = Math.abs(ls.x - rs.x);
     if (prevShoulderWidthRef.current) {
       const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
-      if (change > 0.2) {
+
+      if (change > 0.35) { // threshold מוגדל - רק שינוי אמיתי במצלמה
         transitionMode = true;
         transitionFrames = 0;
       }
@@ -140,7 +141,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         transitionMode = false;
         setFeedback('Orientation locked: ' + orientation.toUpperCase());
       }
-      return; // לא סופרים בזמן transition
+      return; // לא סופרים חזרות בזמן repositioning
     }
 
     // orientation יציב
