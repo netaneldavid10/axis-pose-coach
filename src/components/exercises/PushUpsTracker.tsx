@@ -171,8 +171,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       }
     }
 
-    // if paused, wait until stable lock detected again
+    // if paused, skip FSM but keep rendering
     if (pausedRef.current) {
+      // allow drawing, orientation, etc., but block FSM transitions
+
       if (lockDetected(lm)) {
         pausedRef.current = false;
         lockBaselineRef.current = {
@@ -182,7 +184,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback("Ready again! Continue push-ups");
         speak("Ready again! Continue push-ups");
       }
-      return; // skip rest while paused
+      // skip FSM transitions only, do not return entire onResults
+      return;
     }
 
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
