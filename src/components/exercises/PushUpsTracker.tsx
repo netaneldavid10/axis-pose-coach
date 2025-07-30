@@ -111,23 +111,32 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
+  // ⚡ פונקציית יציבות עם כל הסינונים
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
 
-    // 🚫 מניעת חזרות כשקרוב מדי לכללית
+    // 🚫 קרוב מדי
     if (scale > 0.7) {
       setFeedback('Too close - move back');
       return false;
     }
 
-    // 🚫 מניעת חזרות כשהכתפיים תופסות חלק גדול מדי מהמסך
+    // 🚫 כתפיים רחבות מדי
     if (shoulderDist > 0.6) {
       setFeedback('Too close - shoulders too wide');
       return false;
     }
 
+    // 🚫 סקלטון לא ריאלי (נקודות קרובות מדי זו לזו)
+    const eyeDist = Math.abs(lm[2].x - lm[5].x); // מרחק בין עיניים
+    if (shoulderDist < 0.15 || eyeDist < 0.05) {
+      setFeedback('Skeleton unstable - too compressed');
+      return false;
+    }
+
+    // יציבות יחסית לאורך זמן
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
       if (change > 0.25) {
