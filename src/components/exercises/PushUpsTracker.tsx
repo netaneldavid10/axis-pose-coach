@@ -131,8 +131,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     let downDetected = false;
     let upDetected = false;
 
-    if (viewMode === 'side') {
-      // לוגיקה ישנה ל-side
+    if (viewMode === 'front') {
+      // לוגיקה שהייתה קודם ב-side: זוויות + vertical drop
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
         (verticalDropL > 0.05 && verticalDropR > 0.05);
@@ -140,7 +140,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      // לוגיקה חדשה ל-front
+      // לוגיקה שהייתה קודם ב-front: זוויות בלבד
       downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120);
       upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150);
     }
