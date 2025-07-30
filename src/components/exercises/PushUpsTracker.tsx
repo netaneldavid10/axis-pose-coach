@@ -44,16 +44,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // FSM
+  // FSM states
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
   // orientation lock
-  const prevBodyWidthRef = useRef<number | null>(null);
   let orientation: 'front' | 'side' = 'side';
-  let transitionMode = false;
-  let transitionFrames = 0;
+  let lostFrames = 0;
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -120,35 +118,21 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // --- body width (shoulders + hips) ---
-    const shoulderWidth = Math.abs(ls.x - rs.x);
-    const hipWidth = Math.abs(lh.x - rk.x);
-    const bodyWidth = (shoulderWidth + hipWidth) / 2;
-
-    if (prevBodyWidthRef.current) {
-      const change = Math.abs(bodyWidth - prevBodyWidthRef.current) / prevBodyWidthRef.current;
-
-      // רק שינוי אמיתי של כל הגוף → repositioning
-      if (change > 0.45) {
-        transitionMode = true;
-        transitionFrames = 0;
-      }
-    }
-    prevBodyWidthRef.current = bodyWidth;
-
-    if (transitionMode) {
-      transitionFrames++;
-      setFeedback('Repositioning...');
-      if (transitionFrames > 15) {
+    // ---- ORIENTATION LOCK ----
+    const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
+    if (!visible) {
+      lostFrames++;
+      if (lostFrames > 15) { // ~0.5 שניות
+        setFeedback('Repositioning...');
         orientation = detectOrientation(lm);
         setViewMode(orientation);
-        transitionMode = false;
-        setFeedback('Orientation locked: ' + orientation.toUpperCase());
+        lostFrames = 0;
+        return;
       }
-      return;
+    } else {
+      lostFrames = 0;
     }
 
-    // orientation יציב
     setViewMode(orientation);
 
     let downDetected = false;
