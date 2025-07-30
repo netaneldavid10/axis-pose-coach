@@ -52,7 +52,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   let lostFrames = 0;
 
   const prevScaleRef = useRef<number | null>(null);
-
   const feedbackGivenRef = useRef(false);
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
 
@@ -110,7 +109,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // ⚡ גרסה פשוטה – יציבות לפי סקייל וקפיצות
+  // ⚡ פונקציית יציבות פשוטה
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
@@ -118,8 +117,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     console.log("Scale:", scale);
 
-    const minScale = 0.1;   // רחוק מדי
-    const maxScale = 0.65;  // קרוב מדי
+    const minScale = 0.1;
+    const maxScale = 0.65;
 
     if (scale < minScale || scale > maxScale) {
       return false;
@@ -127,7 +126,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.3) { // קפיצה גדולה מדי
+      if (change > 0.4) { // ריכוך
         return false;
       }
     }
@@ -181,8 +180,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const stable = isStable(lm);
     if (!stable) {
       setFeedback('Repositioning...');
-      return; // עצירה זמנית של ספירה
     }
+
+    // 🚫 ספירה רק אם יציב
+    if (!stable) return;
 
     let downDetected = false;
     let upDetected = false;
