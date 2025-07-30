@@ -48,7 +48,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // לשמירה על רוחב כתפיים קודם (למניעת false positive בהתקרבות)
+  // שמירה של רוחב כתפיים קודם (מניעת false positives בהתקרבות)
   const prevShoulderWidthRef = useRef<number | null>(null);
 
   const synth = window.speechSynthesis;
@@ -123,8 +123,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     if (prevShoulderWidthRef.current) {
       const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
       if (change > 0.2) {
-        // שינוי חד מדי – מתעלמים מהפריים
-        return;
+        return; // שינוי חד – מתעלמים מהפריים
       }
     }
     prevShoulderWidthRef.current = shoulderWidth;
@@ -133,6 +132,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     let upDetected = false;
 
     if (viewMode === 'side') {
+      // לוגיקה ישנה ל-side
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
         (verticalDropL > 0.05 && verticalDropR > 0.05);
@@ -140,12 +140,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      // --- לוגיקה חדשה ל-front: לפי זווית מרפקים ---
+      // לוגיקה חדשה ל-front
       downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120);
       upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150);
     }
 
-    // ---- שלב Ready ----
+    // ---- Ready ----
     if (workoutStateRef.current === 'ready') {
       const shoulderY = (ls.y + rs.y) / 2;
       const hipY = (lh.y + lk.y) / 2;
@@ -162,10 +162,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         readyFramesRef.current = 0;
         setFeedback('Get into position');
       }
-      return; // לא סופרים עדיין
+      return;
     }
 
-    // ---- FSM רגיל ----
+    // ---- FSM ----
     if (cooldownFramesRef.current > 0) {
       cooldownFramesRef.current--;
       return;
