@@ -57,10 +57,11 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  // ---- Lock Detection ----
+  // Lock detection counters
   const lockFramesRef = useRef(0);
+  const feedbackGivenRef = useRef(false);
 
-  // ---- Speech queue ----
+  // Speech queue
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
@@ -115,7 +116,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // ---- יציבות הגוף ----
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
@@ -134,7 +134,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return true;
   }
 
-  // ---- Lock Detection ----
   function lockDetected(lm: any[]): boolean {
     const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
     const lh = lm[23], lk = lm[25];
@@ -154,9 +153,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (plankStraight && armsStraight && stable) {
       lockFramesRef.current++;
-      if (lockFramesRef.current > 12) {
-        return true;
-      }
+      if (lockFramesRef.current > 12) return true;
     } else {
       lockFramesRef.current = 0;
     }
@@ -263,20 +260,24 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       speak('Great push-up!');
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
+      feedbackGivenRef.current = false;
     }
 
     if (workoutStateRef.current === 'up' && lockDetected(lm)) {
-      if (leftElbowAngle < 150 || rightElbowAngle < 150) {
-        speak('Straighten your arms fully');
-        setFeedback('Straighten your arms fully');
-      }
-      if (backAngle < 150 && orientation === 'side') {
-        speak('Keep your back straight');
-        setFeedback('Keep your back straight');
-      }
-      if (verticalDropL < 0.05 && verticalDropR < 0.05) {
-        speak('Go lower next time');
-        setFeedback('Go lower next time');
+      if (!feedbackGivenRef.current) {
+        if (leftElbowAngle < 125 || rightElbowAngle < 125) {
+          speak('Straighten your arms fully');
+          setFeedback('Straighten your arms fully');
+        }
+        if (backAngle < 150 && orientation === 'side') {
+          speak('Keep your back straight');
+          setFeedback('Keep your back straight');
+        }
+        if (verticalDropL < 0.05 && verticalDropR < 0.05) {
+          speak('Go lower next time');
+          setFeedback('Go lower next time');
+        }
+        feedbackGivenRef.current = true;
       }
     }
   }
