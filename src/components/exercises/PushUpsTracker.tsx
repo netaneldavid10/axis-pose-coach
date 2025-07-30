@@ -53,16 +53,22 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
+  // stability check
+  const prevScaleRef = useRef<number | null>(null);
+  const unstableFramesRef = useRef(0);
+
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
+  let lastSpoken: string | null = null;
 
   function speak(text: string) {
-    if (!selectedVoice) return;
+    if (!selectedVoice || lastSpoken === text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
     synth.cancel();
     synth.speak(utterance);
+    lastSpoken = text;
   }
 
   function initVoices() {
@@ -92,6 +98,25 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
+  // ---- יציבות הגוף ----
+  function isStable(lm: any[]): boolean {
+    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
+    const hipDist = Math.abs(lm[23].x - lm[24].x);
+    const scale = Math.max(shoulderDist, hipDist);
+
+    if (prevScaleRef.current) {
+      const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
+      if (change > 0.25) {
+        unstableFramesRef.current++;
+        if (unstableFramesRef.current < 10) return false; // לא יציב
+      } else {
+        unstableFramesRef.current = 0;
+      }
+    }
+    prevScaleRef.current = scale;
+    return true;
+  }
+
   function onResults(results: any) {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -107,7 +132,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     const lm = results.poseLandmarks;
     const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
-    const lh = lm[23], rk = lm[24], lk = lm[25], nose = lm[0];
+    const lh = lm[23], lk = lm[25], nose = lm[0];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
@@ -122,7 +147,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
     if (!visible) {
       lostFrames++;
-      if (lostFrames > 15) { // ~0.5 שניות
+      if (lostFrames > 15) {
         setFeedback('Repositioning...');
         orientation = detectOrientation(lm);
         setViewMode(orientation);
@@ -132,8 +157,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     } else {
       lostFrames = 0;
     }
-
     setViewMode(orientation);
+
+    // ---- יציבות ----
+    if (!isStable(lm)) {
+      setFeedback('Repositioning...');
+      return;
+    }
 
     let downDetected = false;
     let upDetected = false;
@@ -154,6 +184,20 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       upDetected =
         (leftElbowAngle > 150 && rightElbowAngle > 150) ||
         (deltaShoulder < 0.08);
+    }
+
+    // ---- Coaching ----
+    if (backAngle < 150 && orientation === 'side') {
+      speak('Keep your back straight');
+      setFeedback('Straighten your back');
+    }
+    if (workoutStateRef.current === 'down' && leftElbowAngle > 125 && rightElbowAngle > 125) {
+      speak('Go lower');
+      setFeedback('Go lower!');
+    }
+    if (workoutStateRef.current === 'up' && leftElbowAngle < 150 && rightElbowAngle < 150) {
+      speak('Extend arms fully');
+      setFeedback('Straighten your arms');
     }
 
     // ---- Ready ----
@@ -191,10 +235,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       speak('Great push-up!');
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
-    }
-
-    if (backAngle < 30 && orientation === 'side') {
-      speak('Keep your body straight');
     }
   }
 
@@ -269,20 +309,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
             <div className="relative bg-black rounded-lg overflow-hidden">
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
-              
-              {/* Camera indicator */}
               <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
                 <CameraIcon className="h-4 w-4" />
                 <span className="text-sm">Live</span>
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
-
-              {/* View mode overlay */}
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
                 {viewMode.toUpperCase()} VIEW
               </div>
-
-              {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
