@@ -49,18 +49,18 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // Orientation
+  // orientation lock
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
-  // Stability
+  // stability
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  // Feedback counter
+  // feedback counter for accuracy
   const feedbackCountRef = useRef(0);
 
-  // Speech system (queue)
+  // Speech queue
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
@@ -72,8 +72,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
-    utterance.rate = 1; // חזר לברירת מחדל
-    utterance.pitch = 1; // חזר לברירת מחדל
+    utterance.rate = 1; // מהירות דיבור רגילה
+    utterance.pitch = 1; // pitch רגיל
     isSpeaking = true;
     utterance.onend = () => {
       isSpeaking = false;
@@ -96,7 +96,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       null;
   }
 
-  // === חישוב זויות ===
   function angle(a: any, b: any, c: any) {
     const ab = { x: b.x - a.x, y: b.y - a.y };
     const cb = { x: b.x - c.x, y: b.y - c.y };
@@ -116,7 +115,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // יציבות גוף / מניעת קרבה למצלמה
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
@@ -124,7 +122,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.25) { 
+      if (change > 0.25) {
         unstableFramesRef.current++;
         if (unstableFramesRef.current < 10) return false;
       } else {
@@ -161,7 +159,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // ---- Orientation Lock ----
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
     if (!visible) {
       lostFrames++;
@@ -177,7 +174,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     setViewMode(orientation);
 
-    // ---- Stability ----
     if (!isStable(lm)) {
       setFeedback('Repositioning...');
       return;
@@ -204,7 +200,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (deltaShoulder < 0.08);
     }
 
-    // ---- Ready ----
     if (workoutStateRef.current === 'ready') {
       const shoulderY = (ls.y + rs.y) / 2;
       const hipY = (lh.y + lk.y) / 2;
@@ -224,7 +219,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ---- FSM ----
     if (cooldownFramesRef.current > 0) {
       cooldownFramesRef.current--;
       return;
@@ -234,25 +228,33 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
-      // חזרה הושלמה
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
       setFeedback('Great push-up!');
       speak('Great push-up!');
 
-      // ---- Coaching ---- (רק בסוף חזרה)
-      if (backAngle < 150 && orientation === 'side') {
-        speak('Keep your back straight');
-        setFeedback('Straighten your back');
-        feedbackCountRef.current++;
-      }
-      if (leftElbowAngle < 125 && rightElbowAngle < 125) {
-        speak('Straighten your arms');
-        setFeedback('Straighten your arms');
-        feedbackCountRef.current++;
-      }
-
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
+
+      // Delay accuracy check by 0.8s
+      setTimeout(() => {
+        if (!videoRef.current) return;
+
+        // Re-check angles at that moment
+        const leftElbowAngleNow = angle(ls, le, lw);
+        const rightElbowAngleNow = angle(rs, re, rw);
+        const backAngleNow = angle(ls, lh, lk);
+
+        if (backAngleNow < 150 && orientation === 'side') {
+          speak('Keep your back straight');
+          setFeedback('Straighten your back');
+          feedbackCountRef.current++;
+        }
+        if (leftElbowAngleNow < 125 && rightElbowAngleNow < 125) {
+          speak('Straighten your arms');
+          setFeedback('Straighten your arms');
+          feedbackCountRef.current++;
+        }
+      }, 800);
     }
   }
 
@@ -294,21 +296,26 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     setIsTracking(false);
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
 
-    // חישוב דיוק לפי הערות
-    const deductions = feedbackCountRef.current * 2.3;
-    const accuracy = Math.max(0, Math.round(100 - deductions));
+    // accuracy חישוב
+    const totalFeedback = feedbackCountRef.current;
+    let accuracy = 100 - totalFeedback * 2.3;
+    if (accuracy < 0) accuracy = 0;
 
     const finalData: ExerciseData = {
       ...exerciseData,
       duration,
-      formAccuracy: accuracy,
-      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
+      formAccuracy: Math.round(accuracy),
+      feedback: []
     };
     setExerciseData(finalData);
+
     toast({
       title: 'Exercise Complete!',
-      description: `Great job! You completed ${finalData.reps} reps with ${finalData.formAccuracy}% form accuracy.`
+      description: `Great job! You completed ${finalData.reps} reps with ${Math.round(
+        finalData.formAccuracy
+      )}% form accuracy.`
     });
+
     setTimeout(() => {
       onExerciseComplete(finalData);
     }, 2000);
