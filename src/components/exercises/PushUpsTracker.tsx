@@ -44,24 +44,19 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // FSM states
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // Orientation lock
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
-  // Stability check
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  // Lock detection counters
   const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
 
-  // Speech queue
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
@@ -263,7 +258,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       feedbackGivenRef.current = false;
     }
 
-    if (workoutStateRef.current === 'up' && lockDetected(lm)) {
+    // Feedback only after first rep
+    if (workoutStateRef.current === 'up' && lockDetected(lm) && exerciseData.reps > 0) {
       if (!feedbackGivenRef.current) {
         if (leftElbowAngle < 125 || rightElbowAngle < 125) {
           speak('Straighten your arms fully');
@@ -273,7 +269,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           speak('Keep your back straight');
           setFeedback('Keep your back straight');
         }
-        if (verticalDropL < 0.05 && verticalDropR < 0.05) {
+        // more strict: require at least 12% drop
+        if ((verticalDropL < 0.12 && verticalDropR < 0.12)) {
           speak('Go lower next time');
           setFeedback('Go lower next time');
         }
