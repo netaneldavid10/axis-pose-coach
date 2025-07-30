@@ -43,10 +43,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // refs לשמירה מתמשכת
-  const workoutStateRef = useRef<'waiting' | 'up' | 'down'>('waiting');
+  // FSM states: ready → up → down
+  const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
+  const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
-  const downFramesRef = useRef(0);
   const shoulderDownYRef = useRef<number | null>(null);
   const shoulderUpYRef = useRef<number | null>(null);
 
@@ -54,8 +54,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   let selectedVoice: SpeechSynthesisVoice | null = null;
 
   function speak(text: string) {
-    const utterance = new SpeechSynthesisUtterance(text);
     if (!selectedVoice) return;
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
     synth.cancel();
@@ -85,10 +85,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const totalWidth = Math.max(shoulderDist, hipDist);
     const totalHeight = Math.abs(lm[0].y - lm[24].y);
-
     const ratio = totalWidth / totalHeight;
-    // ✅ תיקון: הפוך
-    return ratio > 0.6 ? 'front' : 'side';
+    return ratio > 0.6 ? 'front' : 'side'; // הפוך תוקן
   }
 
   function onResults(results: any) {
@@ -131,22 +129,38 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
       const shoulderY = (ls.y + rs.y) / 2;
-      if (workoutStateRef.current === 'waiting') {
-        shoulderUpYRef.current = shoulderY;
-        shoulderDownYRef.current = shoulderY;
-      }
       const threshold = 0.018;
       downDetected = shoulderY > (shoulderUpYRef.current ?? shoulderY) + threshold;
       upDetected = shoulderY < (shoulderDownYRef.current ?? shoulderY) - threshold;
     }
 
+    // ---- שלב Ready ----
+    if (workoutStateRef.current === 'ready') {
+      const shoulderY = (ls.y + rs.y) / 2;
+      const hipY = (lh.y + lk.y) / 2;
+      const bodyStraight = backAngle > 150;
+      if (shoulderY < hipY - 0.1 && bodyStraight) {
+        readyFramesRef.current++;
+        setFeedback('Hold position...');
+        if (readyFramesRef.current > 15) {
+          workoutStateRef.current = 'up'; // מתחילים ממצב עליון
+          setFeedback('Ready! Start push-ups');
+          speak('Ready, start push-ups');
+        }
+      } else {
+        readyFramesRef.current = 0;
+        setFeedback('Get into position');
+      }
+      return; // לא סופרים עדיין
+    }
+
+    // ---- FSM רגיל ----
     if (cooldownFramesRef.current > 0) {
       cooldownFramesRef.current--;
       return;
     }
 
-    // FSM: waiting → down → up
-    if (workoutStateRef.current === 'waiting' && downDetected) {
+    if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
@@ -155,9 +169,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       speak('Great push-up!');
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 15;
-    } else if (workoutStateRef.current === 'up' && downDetected) {
-      workoutStateRef.current = 'down';
-      setFeedback('Down!');
     }
 
     if (backAngle < 30 && viewMode === 'side') {
@@ -168,7 +179,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const startExercise = async () => {
     setIsTracking(true);
     setStartTime(Date.now());
-    setFeedback('Exercise started! Keep good form.');
+    setFeedback('Get into position');
 
     if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoices;
     initVoices();
