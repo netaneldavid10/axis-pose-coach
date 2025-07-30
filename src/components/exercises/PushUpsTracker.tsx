@@ -44,18 +44,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // FSM
+  // FSM states: ready → up → down
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // למניעת false positives מהתקרבות
+  // שמירה של רוחב כתפיים קודם (מניעת false positives בהתקרבות)
   const prevShoulderWidthRef = useRef<number | null>(null);
-
-  // orientation stabilization
-  let orientation: 'front' | 'side' = 'side';
-  let orientationCandidate: 'front' | 'side' = 'side';
-  let stableFrames = 0;
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -93,19 +88,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const totalWidth = Math.max(shoulderDist, hipDist);
     const totalHeight = Math.abs(lm[0].y - lm[24].y);
     const ratio = totalWidth / totalHeight;
-
-    let candidate: 'front' | 'side' = orientation;
-    if (ratio > 0.65) candidate = 'front';
-    else if (ratio < 0.55) candidate = 'side';
-
-    if (candidate === orientationCandidate) {
-      stableFrames++;
-      if (stableFrames >= 8) orientation = candidate;
-    } else {
-      orientationCandidate = candidate;
-      stableFrames = 0;
-    }
-    return orientation;
+    return ratio > 0.6 ? 'front' : 'side'; // הפוך תוקן
   }
 
   function onResults(results: any) {
@@ -126,7 +109,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     setViewMode(detectedView);
 
     const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
-    const lh = lm[23], lk = lm[25], nose = lm[0];
+    const lh = lm[23], lk = lm[25];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
@@ -137,19 +120,21 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
-    // מניעת false reps מהתקרבות
+    // --- מניעת false reps מהתקרבות למצלמה ---
     const shoulderWidth = Math.abs(ls.x - rs.x);
     if (prevShoulderWidthRef.current) {
       const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
-      if (change > 0.2) return;
+      if (change > 0.2) {
+        return; // שינוי חד – מתעלמים מהפריים
+      }
     }
     prevShoulderWidthRef.current = shoulderWidth;
 
     let downDetected = false;
     let upDetected = false;
 
-    if (detectedView === 'side') {
-      // SIDE: הלוגיקה שעבדה לך
+    if (detectedView === 'front') {
+      // לוגיקה שהייתה קודם ב-side: זוויות + vertical drop
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
         (verticalDropL > 0.05 && verticalDropR > 0.05);
@@ -157,16 +142,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      // FRONT: משולב זוויות + כתפיים מול האף
-      const shoulderY = (ls.y + rs.y) / 2;
-      const deltaShoulder = shoulderY - nose.y;
-
-      downDetected =
-        (leftElbowAngle < 120 && rightElbowAngle < 120) ||
-        (deltaShoulder > 0.12);
-      upDetected =
-        (leftElbowAngle > 150 && rightElbowAngle > 150) ||
-        (deltaShoulder < 0.08);
+      // לוגיקה שהייתה קודם ב-front: זוויות בלבד
+      downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120);
+      upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150);
     }
 
     // ---- Ready ----
@@ -178,7 +156,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         readyFramesRef.current++;
         setFeedback('Hold position...');
         if (readyFramesRef.current > 15) {
-          workoutStateRef.current = 'up';
+          workoutStateRef.current = 'up'; // מתחילים ממצב עליון
           setFeedback('Ready! Start push-ups');
           speak('Ready, start push-ups');
         }
