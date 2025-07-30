@@ -36,7 +36,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
     reps: 0,
     duration: 0,
-    formAccuracy: 0,
+    formAccuracy: 100,
     feedback: []
   });
   const [feedback, setFeedback] = useState('');
@@ -52,7 +52,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   let lostFrames = 0;
 
   const prevScaleRef = useRef<number | null>(null);
+  const unstableFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
+
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
 
   const synth = window.speechSynthesis;
@@ -109,30 +111,37 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // ⚡ פונקציית יציבות פשוטה
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
 
-    console.log("Scale:", scale);
-
-    const minScale = 0.1;
-    const maxScale = 0.65;
-
-    if (scale < minScale || scale > maxScale) {
+    // 🚫 מניעת חזרות לא ריאליסטיות כשקרוב מדי
+    if (scale > 0.7) {
+      setFeedback('Too close - move back');
       return false;
     }
 
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.4) { // ריכוך
-        return false;
+      if (change > 0.25) {
+        unstableFramesRef.current++;
+        if (unstableFramesRef.current < 10) return false;
+      } else {
+        unstableFramesRef.current = 0;
       }
     }
-
     prevScaleRef.current = scale;
     return true;
+  }
+
+  function addFeedback(note: string) {
+    setExerciseData(prev => ({
+      ...prev,
+      feedback: [...prev.feedback, note]
+    }));
+    setFeedback(note);
+    speak(note);
   }
 
   function onResults(results: any) {
@@ -177,13 +186,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     setViewMode(orientation);
 
-    const stable = isStable(lm);
-    if (!stable) {
-      setFeedback('Repositioning...');
-    }
-
-    // 🚫 ספירה רק אם יציב
-    if (!stable) return;
+    if (!isStable(lm)) return;
 
     let downDetected = false;
     let upDetected = false;
@@ -249,8 +252,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
 
         if (dropRatio < 0.45) {
-          setFeedback('Go lower next time');
-          speak('Go lower next time');
+          addFeedback('Go lower next time');
         } else {
           setFeedback('Great push-up!');
           speak('Great push-up!');
@@ -268,12 +270,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
       if (!feedbackGivenRef.current) {
         if (leftElbowAngle < 125 || rightElbowAngle < 125) {
-          speak('Straighten your arms fully');
-          setFeedback('Straighten your arms fully');
+          addFeedback('Straighten your arms fully');
         }
         if (backAngle < 150 && orientation === 'side') {
-          speak('Keep your back straight');
-          setFeedback('Keep your back straight');
+          addFeedback('Keep your back straight');
         }
         feedbackGivenRef.current = true;
 
@@ -281,7 +281,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           shoulderY: (ls.y + rs.y) / 2,
           wristY: (lw.y + rw.y) / 2
         };
-        console.log("Baseline updated after rep:", lockBaselineRef.current);
       }
     }
   }
@@ -323,12 +322,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const stopExercise = () => {
     setIsTracking(false);
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+
+    // ✅ חישוב דיוק לפי הערות
+    const totalFeedback = exerciseData.feedback.length;
+    const formAccuracy = Math.max(0, 100 - totalFeedback * 2.3);
+
     const finalData: ExerciseData = {
       ...exerciseData,
       duration,
-      formAccuracy: Math.random() * 30 + 70,
-      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
+      formAccuracy,
     };
+
     setExerciseData(finalData);
     toast({
       title: 'Exercise Complete!',
