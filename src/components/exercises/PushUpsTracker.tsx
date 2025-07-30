@@ -54,10 +54,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
-
-  // baseline reference
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
 
   const synth = window.speechSynthesis;
@@ -114,10 +111,16 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
+  // ⚡ שדרוג יציבות – כולל טווח סקייל
   function isStable(lm: any[]): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
+
+    // ✅ עצירה אם קרוב/רחוק מדי
+    if (scale < 0.15 || scale > 0.5) {
+      return false;
+    }
 
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
@@ -165,7 +168,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback('Repositioning...');
         orientation = detectOrientation(lm);
         setViewMode(orientation);
-        lockBaselineRef.current = null; // reset baseline on orientation change
+        lockBaselineRef.current = null;
         lostFrames = 0;
         return;
       }
@@ -174,7 +177,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
     setViewMode(orientation);
 
-    if (!isStable(lm)) {
+    // ⚡ אם לא יציב או לא בטווח – עוצרים ספירה
+    const stable = isStable(lm);
+    if (!stable) {
       setFeedback('Repositioning...');
       return;
     }
@@ -271,7 +276,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         }
         feedbackGivenRef.current = true;
 
-        // update baseline only when user reaches stable lock after rep
         lockBaselineRef.current = {
           shoulderY: (ls.y + rs.y) / 2,
           wristY: (lw.y + rw.y) / 2
