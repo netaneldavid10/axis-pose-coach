@@ -257,6 +257,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
       feedbackGivenRef.current = false;
+
+      // update baseline to latest lock after each rep
+      lockBaselineRef.current = {
+        shoulderY: (ls.y + rs.y) / 2,
+        wristY: (lw.y + rw.y) / 2
+      };
     }
 
     if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
