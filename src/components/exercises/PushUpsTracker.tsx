@@ -47,8 +47,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
-  const shoulderDownYRef = useRef<number | null>(null);
-  const shoulderUpYRef = useRef<number | null>(null);
+
+  // לשמירה על רוחב כתפיים קודם (למניעת false positive בהתקרבות)
+  const prevShoulderWidthRef = useRef<number | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -117,6 +118,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
 
+    // --- מניעת false reps מהתקרבות למצלמה ---
+    const shoulderWidth = Math.abs(ls.x - rs.x);
+    if (prevShoulderWidthRef.current) {
+      const change = Math.abs(shoulderWidth - prevShoulderWidthRef.current) / prevShoulderWidthRef.current;
+      if (change > 0.2) {
+        // שינוי חד מדי – מתעלמים מהפריים
+        return;
+      }
+    }
+    prevShoulderWidthRef.current = shoulderWidth;
+
     let downDetected = false;
     let upDetected = false;
 
@@ -128,10 +140,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
         (verticalDropL < 0.08 && verticalDropR < 0.08);
     } else {
-      const shoulderY = (ls.y + rs.y) / 2;
-      const threshold = 0.018;
-      downDetected = shoulderY > (shoulderUpYRef.current ?? shoulderY) + threshold;
-      upDetected = shoulderY < (shoulderDownYRef.current ?? shoulderY) - threshold;
+      // --- לוגיקה חדשה ל-front: לפי זווית מרפקים ---
+      downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120);
+      upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150);
     }
 
     // ---- שלב Ready ----
