@@ -36,7 +36,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
     reps: 0,
     duration: 0,
-    formAccuracy: 0,
+    formAccuracy: 100,
     feedback: []
   });
   const [feedback, setFeedback] = useState('');
@@ -49,15 +49,18 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
 
-  // orientation lock
+  // Orientation
   let orientation: 'front' | 'side' = 'side';
   let lostFrames = 0;
 
-  // stability check
+  // Stability
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  // ==== מערכת תורים לדיבור ====
+  // Feedback counter
+  const feedbackCountRef = useRef(0);
+
+  // Speech system (queue)
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
@@ -69,6 +72,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.voice = selectedVoice;
     utterance.lang = 'en-US';
+    utterance.rate = 1; // חזר לברירת מחדל
+    utterance.pitch = 1; // חזר לברירת מחדל
     isSpeaking = true;
     utterance.onend = () => {
       isSpeaking = false;
@@ -119,7 +124,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.25) {
+      if (change > 0.25) { 
         unstableFramesRef.current++;
         if (unstableFramesRef.current < 10) return false;
       } else {
@@ -203,7 +208,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     if (workoutStateRef.current === 'ready') {
       const shoulderY = (ls.y + rs.y) / 2;
       const hipY = (lh.y + lk.y) / 2;
-      const bodyStraight = backAngle > 140;
+      const bodyStraight = backAngle > 150;
       if (shoulderY < hipY - 0.1 && bodyStraight) {
         readyFramesRef.current++;
         setFeedback('Hold position...');
@@ -229,32 +234,21 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
-      // בדיקת קרבה למצלמה
-      const shoulderWidth = Math.abs(ls.x - rs.x);
-      if (shoulderWidth > 0.35) {
-        setFeedback('Too close to camera');
-        workoutStateRef.current = 'up';
-        cooldownFramesRef.current = 20;
-        return;
-      }
-
       // חזרה הושלמה
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
       setFeedback('Great push-up!');
       speak('Great push-up!');
 
-      // Coaching (רק בסיום חזרה, עם טולרנס)
-      if (orientation === 'side' && backAngle < 140) {
+      // ---- Coaching ---- (רק בסוף חזרה)
+      if (backAngle < 150 && orientation === 'side') {
         speak('Keep your back straight');
         setFeedback('Straighten your back');
+        feedbackCountRef.current++;
       }
-      if (leftElbowAngle < 160 || rightElbowAngle < 160) {
+      if (leftElbowAngle < 125 && rightElbowAngle < 125) {
         speak('Straighten your arms');
         setFeedback('Straighten your arms');
-      }
-      if (leftElbowAngle > 130 && rightElbowAngle > 130 && workoutStateRef.current === 'down') {
-        speak('Go lower');
-        setFeedback('Go lower!');
+        feedbackCountRef.current++;
       }
 
       workoutStateRef.current = 'up';
@@ -299,18 +293,21 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const stopExercise = () => {
     setIsTracking(false);
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+
+    // חישוב דיוק לפי הערות
+    const deductions = feedbackCountRef.current * 2.3;
+    const accuracy = Math.max(0, Math.round(100 - deductions));
+
     const finalData: ExerciseData = {
       ...exerciseData,
       duration,
-      formAccuracy: Math.random() * 30 + 70,
+      formAccuracy: accuracy,
       feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
     };
     setExerciseData(finalData);
     toast({
       title: 'Exercise Complete!',
-      description: `Great job! You completed ${finalData.reps} reps with ${Math.round(
-        finalData.formAccuracy
-      )}% form accuracy.`
+      description: `Great job! You completed ${finalData.reps} reps with ${finalData.formAccuracy}% form accuracy.`
     });
     setTimeout(() => {
       onExerciseComplete(finalData);
