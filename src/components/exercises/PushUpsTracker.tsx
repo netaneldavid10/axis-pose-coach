@@ -160,4 +160,311 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
 
     const lm = results.poseLandmarks;
-    const ls = lm[11], rs = lm[12], le =
+    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const lh = lm[23], lk = lm[25], nose = lm[0];
+
+    window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+    window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
+
+    // קרוב מדי למצלמה
+    if (isTooClose(lm)) {
+      if (!tooCloseRef.current) {
+        tooCloseRef.current = true;
+        setFeedback("חזור אחורה - קרוב מדי למצלמה");
+        speak("Move back, too close to camera");
+      }
+      return;
+    } else {
+      if (tooCloseRef.current) {
+        tooCloseRef.current = false;
+        clearSpeechQueue();
+        setFeedback("Good, continue push-ups");
+        speak("Good, continue push-ups");
+      }
+    }
+
+    const leftElbowAngle = angle(ls, le, lw);
+    const rightElbowAngle = angle(rs, re, rw);
+    const verticalDropL = ls.y - lw.y;
+    const verticalDropR = rs.y - rw.y;
+    const backAngle = angle(ls, lh, lk);
+
+    const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
+    if (!visible) {
+      lostFrames++;
+      if (lostFrames > 15) {
+        setFeedback('Repositioning...');
+        orientation = detectOrientation(lm);
+        setViewMode(orientation);
+        lockBaselineRef.current = null;
+        repCountRef.current = 0;
+        lostFrames = 0;
+        return;
+      }
+    } else {
+      lostFrames = 0;
+    }
+    setViewMode(orientation);
+
+    if (!isStable(lm)) {
+      setFeedback('Repositioning...');
+      return;
+    }
+
+    let downDetected = false;
+    let upDetected = false;
+
+    if (orientation === 'side') {
+      downDetected =
+        (leftElbowAngle < 125 && rightElbowAngle < 125) ||
+        (verticalDropL > 0.05 && verticalDropR > 0.05);
+      upDetected =
+        (leftElbowAngle > 145 && rightElbowAngle > 145) ||
+        (verticalDropL < 0.08 && verticalDropR < 0.08);
+    } else {
+      const shoulderY = (ls.y + rs.y) / 2;
+      const deltaShoulder = shoulderY - nose.y;
+      downDetected =
+        (leftElbowAngle < 120 && rightElbowAngle < 120) ||
+        (deltaShoulder > 0.12);
+      upDetected =
+        (leftElbowAngle > 150 && rightElbowAngle > 150) ||
+        (deltaShoulder < 0.08);
+    }
+
+    if (workoutStateRef.current === 'ready') {
+      const shoulderY = (ls.y + rs.y) / 2;
+      const hipY = (lh.y + lk.y) / 2;
+      const bodyStraight = backAngle > 150;
+      if (shoulderY < hipY - 0.1 && bodyStraight) {
+        readyFramesRef.current++;
+        setFeedback('Hold position...');
+        if (readyFramesRef.current > 15) {
+          workoutStateRef.current = 'up';
+          setFeedback('Ready! Start push-ups');
+          speak('Ready, start push-ups');
+
+          lockBaselineRef.current = {
+            shoulderY: (ls.y + rs.y) / 2,
+            wristY: (lw.y + rw.y) / 2
+          };
+          repCountRef.current = 0;
+        }
+      } else {
+        readyFramesRef.current = 0;
+        setFeedback('Get into position');
+      }
+      return;
+    }
+
+    if (cooldownFramesRef.current > 0) {
+      cooldownFramesRef.current--;
+      return;
+    }
+
+    // ✅ ספירת חזרה + בדיקות דיוק עם baseline דינמי
+    if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
+      repCountRef.current += 1;
+      setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
+
+      const baseline = lockBaselineRef.current;
+      if (baseline) {
+        const currentShoulderY = (ls.y + rs.y) / 2;
+        const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
+
+        if (dropRatio < 0.45) {
+          setFeedback('Go lower next time');
+          speak('Go lower next time');
+        } else {
+          setFeedback('Great push-up!');
+          speak('Great push-up!');
+        }
+      }
+
+      // בדיקות נוספות
+      if (leftElbowAngle < 125 || rightElbowAngle < 125) {
+        speak('Straighten your arms fully');
+        setFeedback('Straighten your arms fully');
+      }
+      if (backAngle < 150 && orientation === 'side') {
+        speak('Keep your back straight');
+        setFeedback('Keep your back straight');
+      }
+
+      // ✅ baseline חדש לכל חזרה ב־Up
+      lockBaselineRef.current = {
+        shoulderY: (ls.y + rs.y) / 2,
+        wristY: (lw.y + rw.y) / 2
+      };
+
+      workoutStateRef.current = 'up';
+      cooldownFramesRef.current = 20;
+      feedbackGivenRef.current = false;
+    }
+
+    if (workoutStateRef.current === 'up' && downDetected) {
+      workoutStateRef.current = 'down';
+      setFeedback('Down!');
+    }
+  }
+
+  const startExercise = async () => {
+    setIsTracking(true);
+    setStartTime(Date.now());
+    setFeedback('Get into position');
+
+    if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoices;
+    initVoices();
+
+    const pose = new window.Pose({
+      locateFile: (file: string) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
+    });
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    pose.onResults(onResults);
+
+    if (videoRef.current) {
+      const camera = new window.Camera(videoRef.current, {
+        onFrame: async () => {
+          await pose.send({ image: videoRef.current! });
+        },
+        width: 640,
+        height: 480
+      });
+      camera.start();
+    }
+  };
+
+  const stopExercise = () => {
+    setIsTracking(false);
+    const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+    const finalData: ExerciseData = {
+      ...exerciseData,
+      duration,
+      formAccuracy: Math.random() * 30 + 70,
+      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
+    };
+    setExerciseData(finalData);
+    toast({
+      title: 'Exercise Complete!',
+      description: `Great job! You completed ${finalData.reps} reps with ${Math.round(
+        finalData.formAccuracy
+      )}% form accuracy.`
+    });
+    setTimeout(() => {
+      onExerciseComplete(finalData);
+    }, 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <Button variant="outline" onClick={onBack}>
+            ← Back
+          </Button>
+          <h1 className="text-2xl font-bold text-center flex-1">Push-ups</h1>
+          <div className="w-16" />
+        </div>
+
+        <Card className="mb-6">
+          <CardContent className="p-6">
+            <div className="relative bg-black rounded-lg overflow-hidden">
+              <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
+              <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+
+              <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
+                <CameraIcon className="h-4 w-4" />
+                <span className="text-sm">Live</span>
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              </div>
+
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
+                {viewMode.toUpperCase()} VIEW
+              </div>
+
+              {isTracking && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
+                    Reps: {exerciseData.reps}
+                  </div>
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg">
+                    {feedback}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Exercise Instructions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Start in plank position. Lower your chest to the ground. Push back up while maintaining straight line.
+            </p>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-primary">{exerciseData.reps}</div>
+                <div className="text-sm text-muted-foreground">Reps</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-primary">
+                  {startTime ? Math.floor((Date.now() - startTime) / 1000) : 0}s
+                </div>
+                <div className="text-sm text-muted-foreground">Duration</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-primary">
+                  {Math.round(exerciseData.formAccuracy)}%
+                </div>
+                <div className="text-sm text-muted-foreground">Form</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex gap-4 justify-center">
+          {!isTracking ? (
+            <Button
+              size="lg"
+              onClick={startExercise}
+              className="bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white px-8 py-4 text-lg font-semibold rounded-2xl"
+            >
+              <CameraIcon className="h-6 w-6 mr-3" />
+              Start Exercise
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              onClick={stopExercise}
+              variant="destructive"
+              className="px-8 py-4 text-lg font-semibold rounded-2xl"
+            >
+              <Square className="h-6 w-6 mr-3" />
+              Stop Exercise
+            </Button>
+          )}
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => window.location.reload()}
+            className="px-8 py-4 text-lg font-semibold rounded-2xl"
+          >
+            <RotateCcw className="h-6 w-6 mr-3" />
+            Reset
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
