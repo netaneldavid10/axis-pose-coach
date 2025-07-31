@@ -26,8 +26,8 @@ interface PushUpsTrackerProps {
   onBack: () => void;
 }
 
-// ✅ סף עומק לירידה (5% מגובה המסך)
-const DEPTH_THRESHOLD = 0.05;
+// ✅ עומק נדרש לירידה (10% מגובה המסך)
+const DEPTH_THRESHOLD = 0.1;
 
 export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
@@ -59,6 +59,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
   const repCountRef = useRef(0);
   const tooCloseRef = useRef(false);
+
+  // ✅ משתנים לשמירת עומק החזרה
+  const repStartShoulderYRef = useRef<number | null>(null);
+  const repMinShoulderYRef = useRef<number | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -157,7 +161,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
 
     const lm = results.poseLandmarks;
-    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const ls = lm[11], rs = lm[12], le = lm[13], rw = lm[16], lw = lm[15];
     const lh = lm[23], lk = lm[25], nose = lm[0];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
@@ -181,10 +185,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
 
     const leftElbowAngle = angle(ls, le, lw);
-    const rightElbowAngle = angle(rs, re, rw);
-    const verticalDropL = ls.y - lw.y;
-    const verticalDropR = rs.y - rw.y;
+    const rightElbowAngle = angle(rs, lm[14], rw);
     const backAngle = angle(ls, lh, lk);
+
+    const shoulderY = (ls.y + rs.y) / 2;
 
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
     if (!visible) {
@@ -211,25 +215,15 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     let upDetected = false;
 
     if (orientation === 'side') {
-      downDetected =
-        (leftElbowAngle < 125 && rightElbowAngle < 125) ||
-        (verticalDropL > 0.05 && verticalDropR > 0.05);
-      upDetected =
-        (leftElbowAngle > 145 && rightElbowAngle > 145) ||
-        (verticalDropL < 0.08 && verticalDropR < 0.08);
+      downDetected = leftElbowAngle < 125 && rightElbowAngle < 125;
+      upDetected = leftElbowAngle > 145 && rightElbowAngle > 145;
     } else {
-      const shoulderY = (ls.y + rs.y) / 2;
       const deltaShoulder = shoulderY - nose.y;
-      downDetected =
-        (leftElbowAngle < 120 && rightElbowAngle < 120) ||
-        (deltaShoulder > 0.12);
-      upDetected =
-        (leftElbowAngle > 150 && rightElbowAngle > 150) ||
-        (deltaShoulder < 0.08);
+      downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120) || (deltaShoulder > 0.12);
+      upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150) || (deltaShoulder < 0.08);
     }
 
     if (workoutStateRef.current === 'ready') {
-      const shoulderY = (ls.y + rs.y) / 2;
       const hipY = (lh.y + lk.y) / 2;
       const bodyStraight = backAngle > 150;
       if (shoulderY < hipY - 0.1 && bodyStraight) {
@@ -253,22 +247,36 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ✅ ספירת חזרה + בדיקת דיוק פשוטה
+    // ✅ start of rep: up → down
+    if (workoutStateRef.current === 'up' && downDetected) {
+      workoutStateRef.current = 'down';
+      setFeedback('Down!');
+
+      repStartShoulderYRef.current = shoulderY;
+      repMinShoulderYRef.current = shoulderY;
+    }
+
+    // ✅ track lowest shoulder during down
+    if (workoutStateRef.current === 'down') {
+      if (
+        repMinShoulderYRef.current === null ||
+        shoulderY > repMinShoulderYRef.current
+      ) {
+        repMinShoulderYRef.current = shoulderY;
+      }
+    }
+
+    // ✅ end of rep: down → up
     if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
       repCountRef.current += 1;
       setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
 
       if (repCountRef.current === 1) {
-        // חזרה ראשונה תמיד מוצלחת
         setFeedback('Great push-up!');
         speak('Great push-up!');
       } else {
-        // מהחזרה השנייה והלאה: shoulder מול wrist
-        const shoulderY = (ls.y + rs.y) / 2;
-        const wristY = (lw.y + rw.y) / 2;
-        const delta = shoulderY - wristY;
-
-        if (delta > DEPTH_THRESHOLD) {
+        const drop = (repMinShoulderYRef.current ?? 0) - (repStartShoulderYRef.current ?? 0);
+        if (drop > DEPTH_THRESHOLD) {
           setFeedback('Great push-up!');
           speak('Great push-up!');
         } else {
@@ -289,11 +297,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
-    }
-
-    if (workoutStateRef.current === 'up' && downDetected) {
-      workoutStateRef.current = 'down';
-      setFeedback('Down!');
+      repStartShoulderYRef.current = null;
+      repMinShoulderYRef.current = null;
     }
   }
 
