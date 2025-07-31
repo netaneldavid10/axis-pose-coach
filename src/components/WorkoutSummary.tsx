@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, Clock, Zap, Target, TrendingUp } from 'lucide-react';
-import { supabase } from '@integrations/supabase/client';  // ✅ חדש
+import { supabase } from '@/integrations/supabase/client'; // ✅ נתיב מתוקן
 
 interface ExerciseData {
   name: string;
@@ -28,13 +28,12 @@ export const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
   averageFormAccuracy,
   onFinish
 }) => {
-  // ✅ חישוב סך החזרות
+  // חישוב סך כל החזרות
   const totalPushups = exercises.reduce((sum, ex) => sum + ex.reps, 0);
 
-  // ✅ שמירה ל-Supabase כשמסך הסיכום נטען
+  // שמירה ל-Supabase כשהמסך נטען
   useEffect(() => {
     const saveWorkout = async () => {
-      // נשלוף את המשתמש המחובר
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
@@ -47,7 +46,7 @@ export const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
           user_id: user.id,
           pushups_count: totalPushups,
           form_score: Math.round(averageFormAccuracy)
-          // date נכנס אוטומטית (default now())
+          // date נכנס אוטומטית ב-DB (default now())
         }
       ]);
 
