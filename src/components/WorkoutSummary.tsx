@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, Clock, Zap, Target, TrendingUp } from 'lucide-react';
+import { supabase } from '@integrations/supabase/client';  // ✅ חדש
 
 interface ExerciseData {
   name: string;
@@ -27,6 +28,39 @@ export const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
   averageFormAccuracy,
   onFinish
 }) => {
+  // ✅ חישוב סך החזרות
+  const totalPushups = exercises.reduce((sum, ex) => sum + ex.reps, 0);
+
+  // ✅ שמירה ל-Supabase כשמסך הסיכום נטען
+  useEffect(() => {
+    const saveWorkout = async () => {
+      // נשלוף את המשתמש המחובר
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        console.error("❌ No logged in user, cannot save workout");
+        return;
+      }
+
+      const { error } = await supabase.from("user_workouts").insert([
+        {
+          user_id: user.id,
+          pushups_count: totalPushups,
+          form_score: Math.round(averageFormAccuracy)
+          // date נכנס אוטומטית (default now())
+        }
+      ]);
+
+      if (error) {
+        console.error("❌ Error saving workout:", error);
+      } else {
+        console.log("✅ Workout saved successfully");
+      }
+    };
+
+    saveWorkout();
+  }, [totalPushups, averageFormAccuracy]);
+
   const getAccuracyColor = (accuracy: number) => {
     if (accuracy >= 90) return 'text-green-600';
     if (accuracy >= 70) return 'text-yellow-600';
