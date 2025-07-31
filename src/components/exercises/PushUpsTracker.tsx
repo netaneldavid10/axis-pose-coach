@@ -26,6 +26,9 @@ interface PushUpsTrackerProps {
   onBack: () => void;
 }
 
+// ✅ סף עומק לירידה (5% מגובה המסך)
+const DEPTH_THRESHOLD = 0.05;
+
 export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
   onBack
@@ -54,13 +57,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  const feedbackGivenRef = useRef(false);
-
-  // baseline reference (מתעדכן בכל חזרה)
-  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
   const repCountRef = useRef(0);
-
-  // קרוב מדי למצלמה
   const tooCloseRef = useRef(false);
 
   const synth = window.speechSynthesis;
@@ -196,7 +193,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback('Repositioning...');
         orientation = detectOrientation(lm);
         setViewMode(orientation);
-        lockBaselineRef.current = null;
         repCountRef.current = 0;
         lostFrames = 0;
         return;
@@ -243,11 +239,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           workoutStateRef.current = 'up';
           setFeedback('Ready! Start push-ups');
           speak('Ready, start push-ups');
-
-          lockBaselineRef.current = {
-            shoulderY: (ls.y + rs.y) / 2,
-            wristY: (lw.y + rw.y) / 2
-          };
           repCountRef.current = 0;
         }
       } else {
@@ -262,22 +253,27 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ✅ ספירת חזרה + בדיקות דיוק עם baseline דינמי
+    // ✅ ספירת חזרה + בדיקת דיוק פשוטה
     if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
       repCountRef.current += 1;
       setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
 
-      const baseline = lockBaselineRef.current;
-      if (baseline) {
-        const currentShoulderY = (ls.y + rs.y) / 2;
-        const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
+      if (repCountRef.current === 1) {
+        // חזרה ראשונה תמיד מוצלחת
+        setFeedback('Great push-up!');
+        speak('Great push-up!');
+      } else {
+        // מהחזרה השנייה והלאה: shoulder מול wrist
+        const shoulderY = (ls.y + rs.y) / 2;
+        const wristY = (lw.y + rw.y) / 2;
+        const delta = shoulderY - wristY;
 
-        if (dropRatio < 0.45) {
-          setFeedback('Go lower next time');
-          speak('Go lower next time');
-        } else {
+        if (delta > DEPTH_THRESHOLD) {
           setFeedback('Great push-up!');
           speak('Great push-up!');
+        } else {
+          setFeedback('Go lower next time');
+          speak('Go lower next time');
         }
       }
 
@@ -291,15 +287,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback('Keep your back straight');
       }
 
-      // ✅ baseline חדש לכל חזרה ב־Up
-      lockBaselineRef.current = {
-        shoulderY: (ls.y + rs.y) / 2,
-        wristY: (lw.y + rw.y) / 2
-      };
-
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
-      feedbackGivenRef.current = false;
     }
 
     if (workoutStateRef.current === 'up' && downDetected) {
