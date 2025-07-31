@@ -58,9 +58,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
   // baseline reference
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
-  const repCountRef = useRef(0); // מונה חזרות אמיתי
+  const repCountRef = useRef(0);
 
-  // ✅ מעקב אם קרוב מדי
+  // קרוב מדי למצלמה
   const tooCloseRef = useRef(false);
 
   const synth = window.speechSynthesis;
@@ -90,7 +90,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     processSpeechQueue();
   }
 
-  // ✅ פונקציה לניקוי תור ההודעות
   function clearSpeechQueue() {
     speechQueue.length = 0;
     speaking = false;
@@ -142,10 +141,9 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return true;
   }
 
-  // ✅ בדיקה אם המשתמש קרוב מדי
   function isTooClose(lm: any[]): boolean {
     const shoulderWidth = Math.abs(lm[11].x - lm[12].x);
-    return shoulderWidth > 0.4; // סף 40% מרוחב המסך
+    return shoulderWidth > 0.4;
   }
 
   function onResults(results: any) {
@@ -162,13 +160,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     }
 
     const lm = results.poseLandmarks;
-    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const ls = lm[11], rs = lm[12], le = lm[13], rw = lm[16], lw = lm[15];
     const lh = lm[23], lk = lm[25], nose = lm[0];
 
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    // ✅ עצירה אם קרוב מדי
+    // קרוב מדי למצלמה
     if (isTooClose(lm)) {
       if (!tooCloseRef.current) {
         tooCloseRef.current = true;
@@ -179,14 +177,14 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     } else {
       if (tooCloseRef.current) {
         tooCloseRef.current = false;
-        clearSpeechQueue(); // ✅ מנקה הודעות ישנות
+        clearSpeechQueue();
         setFeedback("Good, continue push-ups");
         speak("Good, continue push-ups");
       }
     }
 
     const leftElbowAngle = angle(ls, le, lw);
-    const rightElbowAngle = angle(rs, re, rw);
+    const rightElbowAngle = angle(rs, lm[14], rw);
     const verticalDropL = ls.y - lw.y;
     const verticalDropR = rs.y - rw.y;
     const backAngle = angle(ls, lh, lk);
@@ -198,8 +196,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         setFeedback('Repositioning...');
         orientation = detectOrientation(lm);
         setViewMode(orientation);
-        lockBaselineRef.current = null; 
-        repCountRef.current = 0; // ✅ מאפס מונה חזרות
+        lockBaselineRef.current = null;
+        repCountRef.current = 0;
         lostFrames = 0;
         return;
       }
@@ -251,7 +249,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
               shoulderY: (ls.y + rs.y) / 2,
               wristY: (lw.y + rw.y) / 2
             };
-            repCountRef.current = 0; // ✅ מתחילים לספור מחדש
+            repCountRef.current = 0;
           }
         }
       } else {
@@ -266,13 +264,17 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    if (workoutStateRef.current === 'up' && downDetected) {
-      workoutStateRef.current = 'down';
-      setFeedback('Down!');
-    } else if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
+    // ספירת חזרה - רק במעבר down -> up
+    if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
       repCountRef.current += 1;
       setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
+      workoutStateRef.current = 'up';
+      cooldownFramesRef.current = 20;
+      feedbackGivenRef.current = false;
+    }
 
+    // בדיקות דיוק - רק ב-lock (up יציב)
+    if (workoutStateRef.current === 'up' && repCountRef.current > 0 && !feedbackGivenRef.current) {
       const baseline = lockBaselineRef.current;
       if (baseline) {
         const currentShoulderY = (ls.y + rs.y) / 2;
@@ -281,37 +283,33 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
         if (dropRatio < 0.45) {
           setFeedback('Go lower next time');
           speak('Go lower next time');
-        } else {
-          setFeedback('Great push-up!');
-          speak('Great push-up!');
         }
       }
 
-      // ✅ baseline חדש מהחזרה השנייה ואילך
+      if (leftElbowAngle < 125 || rightElbowAngle < 125) {
+        setFeedback('Straighten your arms fully');
+        speak('Straighten your arms fully');
+      }
+
+      if (backAngle < 150 && orientation === 'side') {
+        setFeedback('Keep your back straight');
+        speak('Keep your back straight');
+      }
+
+      feedbackGivenRef.current = true;
+
+      // baseline חדש מהחזרה השנייה ואילך
       if (repCountRef.current >= 2) {
         lockBaselineRef.current = {
           shoulderY: (ls.y + rs.y) / 2,
           wristY: (lw.y + rw.y) / 2
         };
       }
-
-      workoutStateRef.current = 'up';
-      cooldownFramesRef.current = 20;
-      feedbackGivenRef.current = false;
     }
 
-    if (workoutStateRef.current === 'up' && repCountRef.current > 0) {
-      if (!feedbackGivenRef.current) {
-        if (leftElbowAngle < 125 || rightElbowAngle < 125) {
-          speak('Straighten your arms fully');
-          setFeedback('Straighten your arms fully');
-        }
-        if (backAngle < 150 && orientation === 'side') {
-          speak('Keep your back straight');
-          setFeedback('Keep your back straight');
-        }
-        feedbackGivenRef.current = true;
-      }
+    if (workoutStateRef.current === 'up' && downDetected) {
+      workoutStateRef.current = 'down';
+      setFeedback('Down!');
     }
   }
 
