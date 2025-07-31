@@ -54,10 +54,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const prevScaleRef = useRef<number | null>(null);
   const unstableFramesRef = useRef(0);
 
-  const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
-
   const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
+
+  // ✅ מעקב אחר שינוי דרסטי
+  const prevRatioRef = useRef<number | null>(null);
+  const badFramesRef = useRef(0);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -131,13 +133,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return true;
   }
 
-  // ✅ פונקציה לבדיקת שלד אמין
-  function hasValidSkeleton(lm: any[]): boolean {
-    const keyIndices = [11, 12, 13, 14, 23, 24, 25, 26, 27, 28];
-    const visiblePoints = keyIndices.filter(i => lm[i].visibility > 0.6);
-    return visiblePoints.length >= 8;
-  }
-
   function onResults(results: any) {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -158,11 +153,27 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    if (!hasValidSkeleton(lm)) {
-      setFeedback('חזור לפוזיציה מתאימה');
-      workoutStateRef.current = 'ready';
-      return;
+    // ✅ מנגנון שינוי דרסטי
+    const ankleY = (lm[27].y + lm[28].y) / 2;
+    const shoulderWidth = Math.abs(ls.x - rs.x);
+    const bodyHeight = Math.abs(nose.y - ankleY);
+    const ratio = bodyHeight / (shoulderWidth + 1e-6);
+
+    if (prevRatioRef.current) {
+      const change = Math.abs(ratio - prevRatioRef.current) / prevRatioRef.current;
+      if (change > 0.4) {
+        badFramesRef.current++;
+        if (badFramesRef.current > 10) {
+          setFeedback("חזור לפוזיציה מתאימה");
+          speak("Return to proper position");
+          workoutStateRef.current = "ready";
+          return;
+        }
+      } else {
+        badFramesRef.current = 0;
+      }
     }
+    prevRatioRef.current = ratio;
 
     const leftElbowAngle = angle(ls, le, lw);
     const rightElbowAngle = angle(rs, re, rw);
@@ -247,28 +258,23 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       workoutStateRef.current = 'down';
       setFeedback('Down!');
     } else if (workoutStateRef.current === 'down' && upDetected) {
-      if (hasValidSkeleton(lm)) {
-        setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
+      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
 
-        const baseline = lockBaselineRef.current;
-        if (baseline) {
-          const currentShoulderY = (ls.y + rs.y) / 2;
-          const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
+      const baseline = lockBaselineRef.current;
+      if (baseline) {
+        const currentShoulderY = (ls.y + rs.y) / 2;
+        const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
 
-          if (dropRatio < 0.45) {
-            setFeedback('Go lower next time');
-            speak('Go lower next time');
-          } else {
-            setFeedback('Great push-up!');
-            speak('Great push-up!');
-          }
+        if (dropRatio < 0.45) {
+          setFeedback('Go lower next time');
+          speak('Go lower next time');
         } else {
           setFeedback('Great push-up!');
           speak('Great push-up!');
         }
       } else {
-        setFeedback('חזור לפוזיציה מתאימה');
-        speak('Return to proper position');
+        setFeedback('Great push-up!');
+        speak('Great push-up!');
       }
 
       workoutStateRef.current = 'up';
