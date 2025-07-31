@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Calendar, TrendingUp, Zap, Weight, Target } from 'lucide-react';
+import { ArrowLeft, Calendar, TrendingUp, Zap, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,13 +11,12 @@ interface StatisticsPageProps {
 }
 
 export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
-  const [timeRange, setTimeRange] = useState('week');
-  const [workouts, setWorkouts] = useState([]);
+  const [timeRange, setTimeRange] = useState('month');
+  const [workouts, setWorkouts] = useState<any[]>([]);
   const [stats, setStats] = useState({
     totalWorkouts: 0,
-    totalCalories: 0,
-    averageAccuracy: 0,
-    totalDuration: 0
+    totalPushups: 0,
+    averageAccuracy: 0
   });
 
   useEffect(() => {
@@ -43,37 +42,40 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
         break;
     }
 
-    const { data: workoutData } = await supabase
-      .from('workouts')
+    const { data: workoutData, error } = await supabase
+      .from('user_workouts')
       .select('*')
       .eq('user_id', user.id)
-      .gte('created_at', startDate.toISOString())
-      .order('created_at', { ascending: true });
+      .gte('date', startDate.toISOString())
+      .order('date', { ascending: true });
+
+    if (error) {
+      console.error("❌ Error fetching stats:", error);
+      return;
+    }
 
     if (workoutData) {
       setWorkouts(workoutData);
-      
+
       const totalWorkouts = workoutData.length;
-      const totalCalories = workoutData.reduce((sum, w) => sum + (w.calories_burned || 0), 0);
-      const totalDuration = workoutData.reduce((sum, w) => sum + (w.duration_seconds || 0), 0);
+      const totalPushups = workoutData.reduce((sum, w) => sum + (w.pushups_count || 0), 0);
       const averageAccuracy = workoutData.length > 0 
-        ? workoutData.reduce((sum, w) => sum + (w.average_form_accuracy || 0), 0) / workoutData.length
+        ? workoutData.reduce((sum, w) => sum + (w.form_score || 0), 0) / workoutData.length
         : 0;
 
       setStats({
         totalWorkouts,
-        totalCalories,
-        averageAccuracy,
-        totalDuration
+        totalPushups,
+        averageAccuracy
       });
     }
   };
 
   const chartData = workouts.map((workout: any, index) => ({
     workout: `W${index + 1}`,
-    accuracy: workout.average_form_accuracy || 0,
-    calories: workout.calories_burned || 0,
-    duration: Math.round((workout.duration_seconds || 0) / 60)
+    accuracy: workout.form_score || 0,
+    pushups: workout.pushups_count || 0,
+    date: new Date(workout.date).toLocaleDateString()
   }));
 
   return (
@@ -97,7 +99,7 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
@@ -115,8 +117,8 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
               <div className="flex items-center space-x-4">
                 <Zap className="h-8 w-8 text-primary" />
                 <div>
-                  <p className="text-2xl font-bold">{stats.totalCalories}</p>
-                  <p className="text-sm text-muted-foreground">Calories</p>
+                  <p className="text-2xl font-bold">{stats.totalPushups}</p>
+                  <p className="text-sm text-muted-foreground">Pushups</p>
                 </div>
               </div>
             </CardContent>
@@ -129,18 +131,6 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
                 <div>
                   <p className="text-2xl font-bold">{Math.round(stats.averageAccuracy)}%</p>
                   <p className="text-sm text-muted-foreground">Avg Accuracy</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <Calendar className="h-8 w-8 text-primary" />
-                <div>
-                  <p className="text-2xl font-bold">{Math.round(stats.totalDuration / 60)}</p>
-                  <p className="text-sm text-muted-foreground">Minutes</p>
                 </div>
               </div>
             </CardContent>
@@ -158,7 +148,7 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="workout" />
+                    <XAxis dataKey="date" />
                     <YAxis domain={[0, 100]} />
                     <Tooltip />
                     <Line 
@@ -175,17 +165,17 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Calories Burned</CardTitle>
+              <CardTitle>Pushups Count</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="workout" />
+                    <XAxis dataKey="date" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="calories" fill="hsl(var(--primary))" />
+                    <Bar dataKey="pushups" fill="hsl(var(--primary))" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
