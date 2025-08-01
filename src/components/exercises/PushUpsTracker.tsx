@@ -121,13 +121,16 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  function isStable(lm: any[]): boolean {
+  // ✅ יציבות בודקת רק כשאנחנו במצב ready/repositioning
+  function isStable(lm: any[], currentState: string): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
+
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.25) {
+
+      if ((currentState === 'ready' || currentState === 'repositioning') && change > 0.5) {
         unstableFramesRef.current++;
         if (unstableFramesRef.current < 10) return false;
       } else {
@@ -161,7 +164,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    // בדיקת קרבה
+    // קרוב מדי
     if (isTooClose(lm)) {
       if (!tooCloseRef.current) {
         tooCloseRef.current = true;
@@ -184,14 +187,16 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const shoulderY = (ls.y + rs.y) / 2;
 
     const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
-    if (!visible || !isStable(lm)) {
+    const stable = isStable(lm, workoutStateRef.current);
+
+    if (!visible || !stable) {
       workoutStateRef.current = 'repositioning';
       setFeedback('Repositioning...');
       stableFramesRef.current = 0;
       return;
     }
 
-    // אם במצב repositioning – ממתין ל־15 פריימים יציבים לפני חזרה ל־ready
+    // יציאה מ־repositioning אחרי 15 פריימים יציבים
     if (workoutStateRef.current === 'repositioning') {
       stableFramesRef.current++;
       if (stableFramesRef.current > 15) {
@@ -249,7 +254,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       repMinShoulderYRef.current = shoulderY;
     }
 
-    // מעקב אחרי ירידה
+    // ירידה – עוקב אחרי מינימום
     if (workoutStateRef.current === 'down') {
       if (
         repMinShoulderYRef.current === null ||
