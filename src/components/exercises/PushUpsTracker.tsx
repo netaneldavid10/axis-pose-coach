@@ -27,6 +27,7 @@ interface PushUpsTrackerProps {
 }
 
 const DEPTH_THRESHOLD = 0.1; // עומק נדרש
+const PENALTY_PER_REP = 2.3; // אחוז הורדה קבוע לכל חזרה בעייתית
 
 export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
@@ -38,7 +39,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
     reps: 0,
     duration: 0,
-    formAccuracy: 0,
+    formAccuracy: 100,
     feedback: []
   });
   const [feedback, setFeedback] = useState('');
@@ -121,7 +122,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return ratio > 0.65 ? 'front' : 'side';
   }
 
-  // ✅ יציבות בודקת רק כשאנחנו במצב ready/repositioning
   function isStable(lm: any[], currentState: string): boolean {
     const shoulderDist = Math.abs(lm[11].x - lm[12].x);
     const hipDist = Math.abs(lm[23].x - lm[24].x);
@@ -196,7 +196,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // יציאה מ־repositioning אחרי 15 פריימים יציבים
     if (workoutStateRef.current === 'repositioning') {
       stableFramesRef.current++;
       if (stableFramesRef.current > 15) {
@@ -269,18 +268,40 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       repCountRef.current += 1;
       setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
 
-      if (repCountRef.current === 1) {
-        setFeedback('Great push-up!');
-        speak('Great push-up!');
+      let errors: string[] = [];
+
+      // בדיקת עומק
+      const drop = (repMinShoulderYRef.current ?? 0) - (repStartShoulderYRef.current ?? 0);
+      if (repCountRef.current > 1 && drop <= DEPTH_THRESHOLD) {
+        errors.push("Go lower next time");
+      }
+
+      // בדיקת גב ישר (בלי זוויות)
+      const hipY = (lh.y + lk.y) / 2;
+      const ankleY = (lm[27].y + lm[28].y) / 2;
+      const upperSegment = hipY - shoulderY;
+      const lowerSegment = ankleY - hipY;
+
+      if (upperSegment / lowerSegment > 1.2) {
+        errors.push("Lower your hips");
+      } else if (upperSegment / lowerSegment < 0.8) {
+        errors.push("Keep your back straight");
+      }
+
+      // ✅ בחירת הערה אחת בלבד
+      if (errors.length > 0) {
+        const chosen = errors[0];
+        setFeedback(chosen);
+        speak(chosen);
+
+        // ✅ קנס קבוע של 2.3% בדיוק
+        setExerciseData(prev => ({
+          ...prev,
+          formAccuracy: Math.max(0, prev.formAccuracy - PENALTY_PER_REP)
+        }));
       } else {
-        const drop = (repMinShoulderYRef.current ?? 0) - (repStartShoulderYRef.current ?? 0);
-        if (drop > DEPTH_THRESHOLD) {
-          setFeedback('Great push-up!');
-          speak('Great push-up!');
-        } else {
-          setFeedback('Go lower next time');
-          speak('Go lower next time');
-        }
+        setFeedback("Great push-up!");
+        speak("Great push-up!");
       }
 
       workoutStateRef.current = 'up';
@@ -327,8 +348,8 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const finalData: ExerciseData = {
       ...exerciseData,
       duration,
-      formAccuracy: Math.random() * 30 + 70,
-      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
+      feedback: exerciseData.feedback,
+      formAccuracy: exerciseData.formAccuracy
     };
     setExerciseData(finalData);
     toast({
