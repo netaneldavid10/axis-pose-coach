@@ -26,8 +26,8 @@ interface PushUpsTrackerProps {
   onBack: () => void;
 }
 
-const DEPTH_THRESHOLD = 0.1; // עומק נדרש
-const PENALTY_PER_REP = 2.3; // אחוז הורדה קבוע לכל חזרה בעייתית
+const DEPTH_THRESHOLD = 0.1; 
+const PENALTY_PER_REP = 2.3;
 
 export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
@@ -47,17 +47,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // מצבים: ready | up | down | repositioning
   const workoutStateRef = useRef<'ready' | 'up' | 'down' | 'repositioning'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
   const stableFramesRef = useRef(0);
-
-  let orientation: 'front' | 'side' = 'side';
-  let lostFrames = 0;
-
-  const prevScaleRef = useRef<number | null>(null);
-  const unstableFramesRef = useRef(0);
 
   const repCountRef = useRef(0);
   const tooCloseRef = useRef(false);
@@ -65,6 +58,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const repStartShoulderYRef = useRef<number | null>(null);
   const repMinShoulderYRef = useRef<number | null>(null);
 
+  // ✅ baselines
+  const hipBaselineRef = useRef<number | null>(null);
+
+  // Speech
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
   const speechQueue: string[] = [];
@@ -113,34 +110,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
 
-  function detectOrientation(lm: any[]) {
-    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
-    const hipDist = Math.abs(lm[23].x - lm[24].x);
-    const totalWidth = Math.max(shoulderDist, hipDist);
-    const totalHeight = Math.abs(lm[0].y - lm[24].y);
-    const ratio = totalWidth / totalHeight;
-    return ratio > 0.65 ? 'front' : 'side';
-  }
-
-  function isStable(lm: any[], currentState: string): boolean {
-    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
-    const hipDist = Math.abs(lm[23].x - lm[24].x);
-    const scale = Math.max(shoulderDist, hipDist);
-
-    if (prevScaleRef.current) {
-      const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-
-      if ((currentState === 'ready' || currentState === 'repositioning') && change > 0.5) {
-        unstableFramesRef.current++;
-        if (unstableFramesRef.current < 10) return false;
-      } else {
-        unstableFramesRef.current = 0;
-      }
-    }
-    prevScaleRef.current = scale;
-    return true;
-  }
-
   function isTooClose(lm: any[]): boolean {
     const shoulderWidth = Math.abs(lm[11].x - lm[12].x);
     return shoulderWidth > 0.4;
@@ -164,7 +133,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    // קרוב מדי
+    // ❌ קרוב מדי
     if (isTooClose(lm)) {
       if (!tooCloseRef.current) {
         tooCloseRef.current = true;
@@ -181,79 +150,28 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       }
     }
 
-    const leftElbowAngle = angle(ls, le, lw);
-    const rightElbowAngle = angle(rs, lm[14], rw);
-    const backAngle = angle(ls, lh, lk);
     const shoulderY = (ls.y + rs.y) / 2;
-
-    const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
-    const stable = isStable(lm, workoutStateRef.current);
-
-    if (!visible || !stable) {
-      workoutStateRef.current = 'repositioning';
-      setFeedback('Repositioning...');
-      stableFramesRef.current = 0;
-      return;
-    }
-
-    if (workoutStateRef.current === 'repositioning') {
-      stableFramesRef.current++;
-      if (stableFramesRef.current > 15) {
-        workoutStateRef.current = 'ready';
-        repStartShoulderYRef.current = null;
-        repMinShoulderYRef.current = null;
-        setFeedback('Get into position');
-      } else {
-        return;
-      }
-    }
-
-    setViewMode(orientation);
+    const hipY = (lh.y + lk.y) / 2;
+    const ankleY = (lm[27].y + lm[28].y) / 2;
 
     let downDetected = false;
     let upDetected = false;
-    if (orientation === 'side') {
-      downDetected = leftElbowAngle < 125 && rightElbowAngle < 125;
-      upDetected = leftElbowAngle > 145 && rightElbowAngle > 145;
-    } else {
-      const deltaShoulder = shoulderY - nose.y;
-      downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120) || (deltaShoulder > 0.12);
-      upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150) || (deltaShoulder < 0.08);
-    }
+    downDetected = shoulderY > nose.y + 0.12; // פשטתי כאן בשביל הקריאות
+    upDetected = shoulderY < nose.y + 0.08;
 
-    if (workoutStateRef.current === 'ready') {
-      const hipY = (lh.y + lk.y) / 2;
-      const bodyStraight = backAngle > 150;
-      if (shoulderY < hipY - 0.1 && bodyStraight) {
-        readyFramesRef.current++;
-        setFeedback('Hold position...');
-        if (readyFramesRef.current > 15) {
-          workoutStateRef.current = 'up';
-          setFeedback('Ready! Start push-ups');
-          speak('Ready, start push-ups');
-          repCountRef.current = 0;
-        }
-      } else {
-        readyFramesRef.current = 0;
-        setFeedback('Get into position');
-      }
-      return;
-    }
-
-    if (cooldownFramesRef.current > 0) {
-      cooldownFramesRef.current--;
-      return;
-    }
-
-    // התחלת ירידה
+    // התחלת חזרה – שומרים baselines
     if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
       setFeedback('Down!');
       repStartShoulderYRef.current = shoulderY;
       repMinShoulderYRef.current = shoulderY;
+
+      // ✅ שמירת baseline לירכיים בתחילת החזרה
+      const hipRatio = (hipY - shoulderY) / (ankleY - hipY);
+      hipBaselineRef.current = hipRatio;
     }
 
-    // ירידה – עוקב אחרי מינימום
+    // ירידה – מעדכן מינימום כתפיים
     if (workoutStateRef.current === 'down') {
       if (
         repMinShoulderYRef.current === null ||
@@ -263,38 +181,37 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       }
     }
 
-    // סיום חזרה
+    // סיום חזרה – בדיקת דיוק לפי baselines
     if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
       repCountRef.current += 1;
       setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
 
       let errors: string[] = [];
 
-      // בדיקת עומק
+      // עומק – תמיד לפי baseline הכתפיים
       const drop = (repMinShoulderYRef.current ?? 0) - (repStartShoulderYRef.current ?? 0);
       if (repCountRef.current > 1 && drop <= DEPTH_THRESHOLD) {
         errors.push("Go lower next time");
       }
 
-      // בדיקת גב ישר (בלי זוויות)
-      const hipY = (lh.y + lk.y) / 2;
-      const ankleY = (lm[27].y + lm[28].y) / 2;
-      const upperSegment = hipY - shoulderY;
-      const lowerSegment = ankleY - hipY;
-
-      if (upperSegment / lowerSegment > 1.2) {
-        errors.push("Lower your hips");
-      } else if (upperSegment / lowerSegment < 0.8) {
-        errors.push("Keep your back straight");
+      // ✅ גב ישר / ירכיים – לפי baseline הירכיים
+      if (hipBaselineRef.current !== null) {
+        const currentHipRatio = (hipY - shoulderY) / (ankleY - hipY);
+        const deviation = currentHipRatio - hipBaselineRef.current;
+        if (deviation > 0.3) {
+          errors.push("Lower your hips");
+        } else if (deviation < -0.3) {
+          errors.push("Keep your back straight");
+        }
       }
 
-      // ✅ בחירת הערה אחת בלבד
+      // ✅ הערה אחת בלבד בקול
       if (errors.length > 0) {
         const chosen = errors[0];
         setFeedback(chosen);
         speak(chosen);
 
-        // ✅ קנס קבוע של 2.3% בדיוק
+        // ✅ קנס קבוע של 2.3% אם הייתה לפחות הערה אחת
         setExerciseData(prev => ({
           ...prev,
           formAccuracy: Math.max(0, prev.formAccuracy - PENALTY_PER_REP)
@@ -308,6 +225,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       cooldownFramesRef.current = 20;
       repStartShoulderYRef.current = null;
       repMinShoulderYRef.current = null;
+      hipBaselineRef.current = null;
     }
   }
 
