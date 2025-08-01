@@ -26,8 +26,7 @@ interface PushUpsTrackerProps {
   onBack: () => void;
 }
 
-const DEPTH_THRESHOLD = 0.1;
-const HIP_DEVIATION_THRESHOLD = 0.3;
+const DEPTH_THRESHOLD = 0.1; // עומק נדרש
 
 export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
@@ -47,17 +46,23 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
+  // מצבים: ready | up | down | repositioning
   const workoutStateRef = useRef<'ready' | 'up' | 'down' | 'repositioning'>('ready');
   const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
   const stableFramesRef = useRef(0);
+
+  let orientation: 'front' | 'side' = 'side';
+  let lostFrames = 0;
+
+  const prevScaleRef = useRef<number | null>(null);
+  const unstableFramesRef = useRef(0);
 
   const repCountRef = useRef(0);
   const tooCloseRef = useRef(false);
 
   const repStartShoulderYRef = useRef<number | null>(null);
   const repMinShoulderYRef = useRef<number | null>(null);
-  const hipBaselineRef = useRef<number | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -107,6 +112,35 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
 
+  function detectOrientation(lm: any[]) {
+    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
+    const hipDist = Math.abs(lm[23].x - lm[24].x);
+    const totalWidth = Math.max(shoulderDist, hipDist);
+    const totalHeight = Math.abs(lm[0].y - lm[24].y);
+    const ratio = totalWidth / totalHeight;
+    return ratio > 0.65 ? 'front' : 'side';
+  }
+
+  // ✅ יציבות בודקת רק כשאנחנו במצב ready/repositioning
+  function isStable(lm: any[], currentState: string): boolean {
+    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
+    const hipDist = Math.abs(lm[23].x - lm[24].x);
+    const scale = Math.max(shoulderDist, hipDist);
+
+    if (prevScaleRef.current) {
+      const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
+
+      if ((currentState === 'ready' || currentState === 'repositioning') && change > 0.5) {
+        unstableFramesRef.current++;
+        if (unstableFramesRef.current < 10) return false;
+      } else {
+        unstableFramesRef.current = 0;
+      }
+    }
+    prevScaleRef.current = scale;
+    return true;
+  }
+
   function isTooClose(lm: any[]): boolean {
     const shoulderWidth = Math.abs(lm[11].x - lm[12].x);
     return shoulderWidth > 0.4;
@@ -116,7 +150,6 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
@@ -128,31 +161,78 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const lm = results.poseLandmarks;
     const ls = lm[11], rs = lm[12], le = lm[13], rw = lm[16], lw = lm[15];
     const lh = lm[23], lk = lm[25], nose = lm[0];
-    const shoulderY = (ls.y + rs.y) / 2;
-    const hipY = (lh.y + lk.y) / 2;
-    const ankleY = (lm[27].y + lm[28].y) / 2;
-
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    // זיהוי ירידה/עלייה
+    // קרוב מדי
+    if (isTooClose(lm)) {
+      if (!tooCloseRef.current) {
+        tooCloseRef.current = true;
+        setFeedback("חזור אחורה - קרוב מדי למצלמה");
+        speak("Move back, too close to camera");
+      }
+      return;
+    } else {
+      if (tooCloseRef.current) {
+        tooCloseRef.current = false;
+        clearSpeechQueue();
+        setFeedback("Good, continue push-ups");
+        speak("Good, continue push-ups");
+      }
+    }
+
     const leftElbowAngle = angle(ls, le, lw);
     const rightElbowAngle = angle(rs, lm[14], rw);
-    const downDetected = leftElbowAngle < 125 && rightElbowAngle < 125;
-    const upDetected = leftElbowAngle > 145 && rightElbowAngle > 145;
+    const backAngle = angle(ls, lh, lk);
+    const shoulderY = (ls.y + rs.y) / 2;
 
-    // DEBUG LOG מצב נוכחי
-    console.log("STATE:", workoutStateRef.current, "Reps:", repCountRef.current);
+    const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
+    const stable = isStable(lm, workoutStateRef.current);
 
-    // READY
+    if (!visible || !stable) {
+      workoutStateRef.current = 'repositioning';
+      setFeedback('Repositioning...');
+      stableFramesRef.current = 0;
+      return;
+    }
+
+    // יציאה מ־repositioning אחרי 15 פריימים יציבים
+    if (workoutStateRef.current === 'repositioning') {
+      stableFramesRef.current++;
+      if (stableFramesRef.current > 15) {
+        workoutStateRef.current = 'ready';
+        repStartShoulderYRef.current = null;
+        repMinShoulderYRef.current = null;
+        setFeedback('Get into position');
+      } else {
+        return;
+      }
+    }
+
+    setViewMode(orientation);
+
+    let downDetected = false;
+    let upDetected = false;
+    if (orientation === 'side') {
+      downDetected = leftElbowAngle < 125 && rightElbowAngle < 125;
+      upDetected = leftElbowAngle > 145 && rightElbowAngle > 145;
+    } else {
+      const deltaShoulder = shoulderY - nose.y;
+      downDetected = (leftElbowAngle < 120 && rightElbowAngle < 120) || (deltaShoulder > 0.12);
+      upDetected = (leftElbowAngle > 150 && rightElbowAngle > 150) || (deltaShoulder < 0.08);
+    }
+
     if (workoutStateRef.current === 'ready') {
-      if (shoulderY < hipY - 0.1) {
+      const hipY = (lh.y + lk.y) / 2;
+      const bodyStraight = backAngle > 150;
+      if (shoulderY < hipY - 0.1 && bodyStraight) {
         readyFramesRef.current++;
+        setFeedback('Hold position...');
         if (readyFramesRef.current > 15) {
           workoutStateRef.current = 'up';
-          console.log("→ ENTER UP STATE (Ready complete)");
           setFeedback('Ready! Start push-ups');
           speak('Ready, start push-ups');
+          repCountRef.current = 0;
         }
       } else {
         readyFramesRef.current = 0;
@@ -161,65 +241,52 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       return;
     }
 
-    // ירידה
+    if (cooldownFramesRef.current > 0) {
+      cooldownFramesRef.current--;
+      return;
+    }
+
+    // התחלת ירידה
     if (workoutStateRef.current === 'up' && downDetected) {
       workoutStateRef.current = 'down';
-      console.log("→ ENTER DOWN STATE");
       setFeedback('Down!');
       repStartShoulderYRef.current = shoulderY;
       repMinShoulderYRef.current = shoulderY;
-      hipBaselineRef.current = (hipY - shoulderY) / (ankleY - hipY);
     }
 
+    // ירידה – עוקב אחרי מינימום
     if (workoutStateRef.current === 'down') {
-      if (repMinShoulderYRef.current === null || shoulderY > repMinShoulderYRef.current) {
+      if (
+        repMinShoulderYRef.current === null ||
+        shoulderY > repMinShoulderYRef.current
+      ) {
         repMinShoulderYRef.current = shoulderY;
       }
     }
 
-    // עלייה וספירת חזרה
-    if (workoutStateRef.current === 'down' && upDetected) {
-      workoutStateRef.current = 'up';
+    // סיום חזרה
+    if (workoutStateRef.current === 'down' && upDetected && !tooCloseRef.current) {
       repCountRef.current += 1;
-      console.log("→ ENTER UP STATE (Rep finished)", "Reps:", repCountRef.current);
-
-      let errors: string[] = [];
+      setExerciseData(prev => ({ ...prev, reps: repCountRef.current }));
 
       if (repCountRef.current === 1) {
         setFeedback('Great push-up!');
         speak('Great push-up!');
       } else {
-        // עומק
         const drop = (repMinShoulderYRef.current ?? 0) - (repStartShoulderYRef.current ?? 0);
-        if (drop <= DEPTH_THRESHOLD) {
-          errors.push("Go lower next time");
-        }
-
-        // ירכיים ביחס ל־baseline
-        if (hipBaselineRef.current !== null) {
-          const currentHipRatio = (hipY - shoulderY) / (ankleY - hipY);
-          const deviation = currentHipRatio - hipBaselineRef.current;
-          if (deviation > HIP_DEVIATION_THRESHOLD) {
-            errors.push("Lower your hips");
-          } else if (deviation < -HIP_DEVIATION_THRESHOLD) {
-            errors.push("Keep your back straight");
-          }
-        }
-
-        if (errors.length > 0) {
-          const chosen = errors[0];
-          setFeedback(chosen);
-          speak(chosen);
-        } else {
+        if (drop > DEPTH_THRESHOLD) {
           setFeedback('Great push-up!');
           speak('Great push-up!');
+        } else {
+          setFeedback('Go lower next time');
+          speak('Go lower next time');
         }
       }
 
+      workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
       repStartShoulderYRef.current = null;
       repMinShoulderYRef.current = null;
-      hipBaselineRef.current = null;
     }
   }
 
@@ -261,7 +328,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       ...exerciseData,
       duration,
       formAccuracy: Math.random() * 30 + 70,
-      feedback: []
+      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
     };
     setExerciseData(finalData);
     toast({
@@ -290,9 +357,86 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
             <div className="relative bg-black rounded-lg overflow-hidden">
               <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
               <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" />
+              <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 text-white px-3 py-1 rounded-full">
+                <CameraIcon className="h-4 w-4" />
+                <span className="text-sm">Live</span>
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              </div>
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
+                {viewMode.toUpperCase()} VIEW
+              </div>
+              {isTracking && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
+                    Reps: {exerciseData.reps}
+                  </div>
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg">
+                    {feedback}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Exercise Instructions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Start in plank position. Lower your chest to the ground. Push back up while maintaining straight line.
+            </p>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-primary">{exerciseData.reps}</div>
+                <div className="text-sm text-muted-foreground">Reps</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-primary">
+                  {startTime ? Math.floor((Date.now() - startTime) / 1000) : 0}s
+                </div>
+                <div className="text-sm text-muted-foreground">Duration</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-primary">
+                  {Math.round(exerciseData.formAccuracy)}%
+                </div>
+                <div className="text-sm text-muted-foreground">Form</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <div className="flex gap-4 justify-center">
+          {!isTracking ? (
+            <Button
+              size="lg"
+              onClick={startExercise}
+              className="bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white px-8 py-4 text-lg font-semibold rounded-2xl"
+            >
+              <CameraIcon className="h-6 w-6 mr-3" />
+              Start Exercise
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              onClick={stopExercise}
+              variant="destructive"
+              className="px-8 py-4 text-lg font-semibold rounded-2xl"
+            >
+              <Square className="h-6 w-6 mr-3" />
+              Stop Exercise
+            </Button>
+          )}
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={() => window.location.reload()}
+            className="px-8 py-4 text-lg font-semibold rounded-2xl"
+          >
+            <RotateCcw className="h-6 w-6 mr-3" />
+            Reset
+          </Button>
+        </div>
       </div>
     </div>
   );
