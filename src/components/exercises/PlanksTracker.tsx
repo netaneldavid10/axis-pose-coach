@@ -24,7 +24,7 @@ interface PlankTrackerProps {
   onBack: () => void;
 }
 
-export const PlankTracker: React.FC<PlankTrackerProps> = ({
+export const PlanksTracker: React.FC<PlankTrackerProps> = ({
   onExerciseComplete,
   onBack
 }) => {
