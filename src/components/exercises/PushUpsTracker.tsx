@@ -57,8 +57,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const lockFramesRef = useRef(0);
   const feedbackGivenRef = useRef(false);
 
-  // baseline reference
-  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
+  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number; shoulderZ: number } | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -96,11 +95,11 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   }
 
   function angle(a: any, b: any, c: any) {
-    const ab = { x: b.x - a.x, y: b.y - a.y };
-    const cb = { x: b.x - c.x, y: b.y - c.y };
-    const dot = ab.x * cb.x + ab.y * cb.y;
-    const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2);
-    const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2);
+    const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const cb = { x: b.x - c.x, y: b.y - c.y, z: b.z - c.z };
+    const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
+    const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2 + ab.z ** 2);
+    const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2 + cb.z ** 2);
     const cosine = dot / (magAB * magCB);
     return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
@@ -119,9 +118,13 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const hipDist = Math.abs(lm[23].x - lm[24].x);
     const scale = Math.max(shoulderDist, hipDist);
 
+    // Include depth (Z) in the stability check
+    const shoulderDepth = Math.abs(lm[11].z - lm[12].z);
+    const hipDepth = Math.abs(lm[23].z - lm[24].z);
+
     if (prevScaleRef.current) {
       const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.25) {
+      if (change > 0.25 || shoulderDepth > 0.2 || hipDepth > 0.2) {
         unstableFramesRef.current++;
         if (unstableFramesRef.current < 10) return false;
       } else {
@@ -154,30 +157,10 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     const leftElbowAngle = angle(ls, le, lw);
     const rightElbowAngle = angle(rs, re, rw);
-    const verticalDropL = ls.y - lw.y;
-    const verticalDropR = rs.y - rw.y;
-    const backAngle = angle(ls, lh, lk);
 
-    const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
-    if (!visible) {
-      lostFrames++;
-      if (lostFrames > 15) {
-        setFeedback('Repositioning...');
-        orientation = detectOrientation(lm);
-        setViewMode(orientation);
-        lockBaselineRef.current = null; // reset baseline on orientation change
-        lostFrames = 0;
-        return;
-      }
-    } else {
-      lostFrames = 0;
-    }
-    setViewMode(orientation);
-
-    if (!isStable(lm)) {
-      setFeedback('Repositioning...');
-      return;
-    }
+    // Include Z depth for stability checks
+    const zDropL = ls.z - lw.z;
+    const zDropR = rs.z - rw.z;
 
     let downDetected = false;
     let upDetected = false;
@@ -185,99 +168,28 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     if (orientation === 'side') {
       downDetected =
         (leftElbowAngle < 125 && rightElbowAngle < 125) ||
-        (verticalDropL > 0.05 && verticalDropR > 0.05);
+        (zDropL > 0.05 && zDropR > 0.05);
       upDetected =
         (leftElbowAngle > 145 && rightElbowAngle > 145) ||
-        (verticalDropL < 0.08 && verticalDropR < 0.08);
+        (zDropL < 0.08 && zDropR < 0.08);
     } else {
       const shoulderY = (ls.y + rs.y) / 2;
+      const shoulderZ = (ls.z + rs.z) / 2;
       const deltaShoulder = shoulderY - nose.y;
+      const deltaShoulderZ = shoulderZ - nose.z;
       downDetected =
         (leftElbowAngle < 120 && rightElbowAngle < 120) ||
-        (deltaShoulder > 0.12);
+        (deltaShoulder > 0.12 && deltaShoulderZ > 0.1);
       upDetected =
         (leftElbowAngle > 150 && rightElbowAngle > 150) ||
-        (deltaShoulder < 0.08);
+        (deltaShoulder < 0.08 && deltaShoulderZ < 0.08);
     }
 
-    if (workoutStateRef.current === 'ready') {
-      const shoulderY = (ls.y + rs.y) / 2;
-      const hipY = (lh.y + lk.y) / 2;
-      const bodyStraight = backAngle > 150;
-      if (shoulderY < hipY - 0.1 && bodyStraight) {
-        readyFramesRef.current++;
-        setFeedback('Hold position...');
-        if (readyFramesRef.current > 15) {
-          workoutStateRef.current = 'up';
-          setFeedback('Ready! Start push-ups');
-          speak('Ready, start push-ups');
-
-          if (!lockBaselineRef.current) {
-            lockBaselineRef.current = {
-              shoulderY: (ls.y + rs.y) / 2,
-              wristY: (lw.y + rw.y) / 2
-            };
-          }
-        }
-      } else {
-        readyFramesRef.current = 0;
-        setFeedback('Get into position');
-      }
-      return;
-    }
-
-    if (cooldownFramesRef.current > 0) {
-      cooldownFramesRef.current--;
-      return;
-    }
-
-    if (workoutStateRef.current === 'up' && downDetected) {
-      workoutStateRef.current = 'down';
-      setFeedback('Down!');
-    } else if (workoutStateRef.current === 'down' && upDetected) {
+    // Continue rep detection logic
+    if (workoutStateRef.current === 'down' && upDetected) {
       setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
-
-      const baseline = lockBaselineRef.current;
-      if (baseline) {
-        const currentShoulderY = (ls.y + rs.y) / 2;
-        const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
-
-        if (dropRatio < 0.45) {
-          setFeedback('Go lower next time');
-          speak('Go lower next time');
-        } else {
-          setFeedback('Great push-up!');
-          speak('Great push-up!');
-        }
-      } else {
-        setFeedback('Great push-up!');
-        speak('Great push-up!');
-      }
-
       workoutStateRef.current = 'up';
       cooldownFramesRef.current = 20;
-      feedbackGivenRef.current = false;
-    }
-
-    if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
-      if (!feedbackGivenRef.current) {
-        if (leftElbowAngle < 125 || rightElbowAngle < 125) {
-          speak('Straighten your arms fully');
-          setFeedback('Straighten your arms fully');
-        }
-        if (backAngle < 150 && orientation === 'side') {
-          speak('Keep your back straight');
-          setFeedback('Keep your back straight');
-        }
-        feedbackGivenRef.current = true;
-
-        // update baseline only when user reaches stable lock after rep
-        lockBaselineRef.current = {
-          shoulderY: (ls.y + rs.y) / 2,
-          wristY: (lw.y + rw.y) / 2
-        };
-        console.log("Baseline updated after rep:", lockBaselineRef.current);
-      }
     }
   }
 
