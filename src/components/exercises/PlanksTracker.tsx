@@ -11,12 +11,12 @@ interface ExerciseData {
   feedback: string[];
 }
 
-interface MountainClimbersTrackerProps {
+interface PlanksTrackerProps {
   onExerciseComplete: (data: ExerciseData) => void;
   onBack: () => void;
 }
 
-export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = ({
+export const PlanksTracker: React.FC<PlanksTrackerProps> = ({
   onExerciseComplete,
   onBack
 }) => {
@@ -98,7 +98,7 @@ export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = (
     
     toast({
       title: "Exercise Complete!",
-      description: `Great job! You performed for ${duration} seconds with ${Math.round(finalData.formAccuracy)}% form accuracy.`,
+      description: `Great job! You held the plank for ${duration} seconds with ${Math.round(finalData.formAccuracy)}% form accuracy.`,
     });
 
     setTimeout(() => {
@@ -107,33 +107,29 @@ export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = (
   };
 
   const simulateExerciseTracking = () => {
-    let repCount = 0;
     const interval = setInterval(() => {
       if (!isTracking) {
         clearInterval(interval);
         return;
       }
 
-      repCount += 2; // Count both legs
-      setExerciseData(prev => ({ ...prev, reps: repCount }));
-      
-      // Simulate feedback
+      // Simulate feedback for plank hold
       const feedbackMessages = [
-        'Keep the pace!',
-        'Core engaged!',
-        'Great rhythm!',
+        'Hold steady!',
+        'Keep core engaged!',
+        'Great form!',
         'Stay strong!',
         'Perfect!',
       ];
       
       setFeedback(feedbackMessages[Math.floor(Math.random() * feedbackMessages.length)]);
 
-      // Auto-stop after 45 seconds for demo
-      if (startTime && (Date.now() - startTime) >= 45000) {
+      // Auto-stop after 60 seconds for demo
+      if (startTime && (Date.now() - startTime) >= 60000) {
         clearInterval(interval);
         stopExercise();
       }
-    }, 1000); // Fast pace for mountain climbers
+    }, 3000); // Update feedback every 3 seconds
   };
 
   return (
@@ -145,7 +141,7 @@ export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = (
             ← Back
           </Button>
           <h1 className="text-2xl font-bold text-center flex-1">
-            Mountain Climbers
+            Planks
           </h1>
           <div className="w-16" /> {/* Spacer */}
         </div>
@@ -175,9 +171,9 @@ export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = (
               {/* Exercise overlay */}
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
-                  {/* Rep counter */}
+                  {/* Timer */}
                   <div className="absolute top-4 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
-                    Reps: {exerciseData.reps}
+                    {startTime ? Math.floor((Date.now() - startTime) / 1000) : 0}s
                   </div>
                   
                   {/* Feedback */}
@@ -197,14 +193,14 @@ export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = (
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Dynamic cardio exercise targeting core and cardiovascular system. Start in plank position and alternate bringing knees to chest rapidly.
+              Hold plank position with straight line from head to heels. Keep core engaged.
             </p>
             
             {/* Current stats */}
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold text-primary">{exerciseData.reps}</div>
-                <div className="text-sm text-muted-foreground">Reps</div>
+                <div className="text-sm text-muted-foreground">Sets</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-primary">
