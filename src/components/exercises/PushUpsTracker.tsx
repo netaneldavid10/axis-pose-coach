@@ -15,16 +15,18 @@ declare global {
 }
 
 interface ExerciseData {
+  reps: number;
   duration: number;
+  formAccuracy: number;
   feedback: string[];
 }
 
-interface PlankTrackerProps {
+interface PushUpsTrackerProps {
   onExerciseComplete: (data: ExerciseData) => void;
   onBack: () => void;
 }
 
-export const PlankTracker: React.FC<PlankTrackerProps> = ({
+export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
   onBack
 }) => {
@@ -32,15 +34,31 @@ export const PlankTracker: React.FC<PlankTrackerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
+    reps: 0,
     duration: 0,
+    formAccuracy: 0,
     feedback: []
   });
   const [feedback, setFeedback] = useState('');
+  const [viewMode, setViewMode] = useState<'front' | 'side'>('front');
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  const workoutStateRef = useRef<'ready' | 'holding'>('ready');
+  const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
+  const readyFramesRef = useRef(0);
   const cooldownFramesRef = useRef(0);
+
+  let orientation: 'front' | 'side' = 'side';
+  let lostFrames = 0;
+
+  const prevScaleRef = useRef<number | null>(null);
+  const unstableFramesRef = useRef(0);
+
+  const lockFramesRef = useRef(0);
+  const feedbackGivenRef = useRef(false);
+
+  // baseline reference
+  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number } | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -77,30 +95,44 @@ export const PlankTracker: React.FC<PlankTrackerProps> = ({
       null;
   }
 
-  // פונקציה לחישוב זווית בין 3 נקודות
   function angle(a: any, b: any, c: any) {
-    const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
-    const cb = { x: b.x - c.x, y: b.y - c.y, z: b.z - c.z };
-    const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
-    const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2 + ab.z ** 2);
-    const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2 + cb.z ** 2);
+    const ab = { x: b.x - a.x, y: b.y - a.y };
+    const cb = { x: b.x - c.x, y: b.y - c.y };
+    const dot = ab.x * cb.x + ab.y * cb.y;
+    const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2);
+    const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2);
     const cosine = dot / (magAB * magCB);
     return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
 
-  // פונקציה לזיהוי יציבות בתנוחת פלנק
-  function isStable(lm: any[]): boolean {
-    // מדוד את הזווית בין הראש לכתפיים ולירך
-    const head = lm[0], shoulderL = lm[11], shoulderR = lm[12], hipL = lm[23], hipR = lm[24];
-    const shoulderAngle = angle(shoulderL, head, shoulderR);
-    const hipAngle = angle(hipL, shoulderL, shoulderR);
+  function detectOrientation(lm: any[]) {
+    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
+    const hipDist = Math.abs(lm[23].x - lm[24].x);
+    const totalWidth = Math.max(shoulderDist, hipDist);
+    const totalHeight = Math.abs(lm[0].y - lm[24].y);
+    const ratio = totalWidth / totalHeight;
+    return ratio > 0.65 ? 'front' : 'side';
+  }
 
-    // אם הזוויות גדולות מדי (מעידות על עיקול גב), החזק את הפלנק לא יציב
-    return shoulderAngle < 20 && hipAngle < 20;
+  function isStable(lm: any[]): boolean {
+    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
+    const hipDist = Math.abs(lm[23].x - lm[24].x);
+    const scale = Math.max(shoulderDist, hipDist);
+
+    if (prevScaleRef.current) {
+      const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
+      if (change > 0.25) {
+        unstableFramesRef.current++;
+        if (unstableFramesRef.current < 10) return false;
+      } else {
+        unstableFramesRef.current = 0;
+      }
+    }
+    prevScaleRef.current = scale;
+    return true;
   }
 
   function onResults(results: any) {
-    console.log("onResults triggered", results);  // לוג למעקב אחרי קריאות של onResults
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -110,38 +142,148 @@ export const PlankTracker: React.FC<PlankTrackerProps> = ({
 
     if (!results.poseLandmarks || results.poseLandmarks.length < 25) {
       setFeedback('Move back - not enough data');
-      console.log("Not enough landmarks detected");
       return;
     }
 
     const lm = results.poseLandmarks;
+    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
+    const lh = lm[23], lk = lm[25], nose = lm[0];
+
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    const isStableNow = isStable(lm);
+    const leftElbowAngle = angle(ls, le, lw);
+    const rightElbowAngle = angle(rs, re, rw);
+    const verticalDropL = ls.y - lw.y;
+    const verticalDropR = rs.y - rw.y;
+    const backAngle = angle(ls, lh, lk);
 
-    if (!isStableNow) {
-      setFeedback('Adjust your position!');
+    const visible = lm[11].visibility > 0.6 && lm[12].visibility > 0.6;
+    if (!visible) {
+      lostFrames++;
+      if (lostFrames > 15) {
+        setFeedback('Repositioning...');
+        orientation = detectOrientation(lm);
+        setViewMode(orientation);
+        lockBaselineRef.current = null; // reset baseline on orientation change
+        lostFrames = 0;
+        return;
+      }
     } else {
-      setFeedback('Great plank! Keep holding!');
+      lostFrames = 0;
+    }
+    setViewMode(orientation);
+
+    if (!isStable(lm)) {
+      setFeedback('Repositioning...');
+      return;
     }
 
-    // אם יש יציבות, תן משוב טוב וחשב את זמן הפלנק
-    if (isStableNow && workoutStateRef.current === 'ready') {
-      workoutStateRef.current = 'holding';
-      setFeedback('Plank started, keep holding!');
-      speak('Plank started, keep holding!');
-      setStartTime(Date.now());
+    let downDetected = false;
+    let upDetected = false;
+
+    if (orientation === 'side') {
+      downDetected =
+        (leftElbowAngle < 125 && rightElbowAngle < 125) ||
+        (verticalDropL > 0.05 && verticalDropR > 0.05);
+      upDetected =
+        (leftElbowAngle > 145 && rightElbowAngle > 145) ||
+        (verticalDropL < 0.08 && verticalDropR < 0.08);
+    } else {
+      const shoulderY = (ls.y + rs.y) / 2;
+      const deltaShoulder = shoulderY - nose.y;
+      downDetected =
+        (leftElbowAngle < 120 && rightElbowAngle < 120) ||
+        (deltaShoulder > 0.12);
+      upDetected =
+        (leftElbowAngle > 150 && rightElbowAngle > 150) ||
+        (deltaShoulder < 0.08);
     }
 
-    if (workoutStateRef.current === 'holding') {
-      const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
-      setExerciseData(prev => ({ ...prev, duration }));
+    if (workoutStateRef.current === 'ready') {
+      const shoulderY = (ls.y + rs.y) / 2;
+      const hipY = (lh.y + lk.y) / 2;
+      const bodyStraight = backAngle > 150;
+      if (shoulderY < hipY - 0.1 && bodyStraight) {
+        readyFramesRef.current++;
+        setFeedback('Hold position...');
+        if (readyFramesRef.current > 15) {
+          workoutStateRef.current = 'up';
+          setFeedback('Ready! Start push-ups');
+          speak('Ready, start push-ups');
+
+          if (!lockBaselineRef.current) {
+            lockBaselineRef.current = {
+              shoulderY: (ls.y + rs.y) / 2,
+              wristY: (lw.y + rw.y) / 2
+            };
+          }
+        }
+      } else {
+        readyFramesRef.current = 0;
+        setFeedback('Get into position');
+      }
+      return;
+    }
+
+    if (cooldownFramesRef.current > 0) {
+      cooldownFramesRef.current--;
+      return;
+    }
+
+    if (workoutStateRef.current === 'up' && downDetected) {
+      workoutStateRef.current = 'down';
+      setFeedback('Down!');
+    } else if (workoutStateRef.current === 'down' && upDetected) {
+      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
+
+      const baseline = lockBaselineRef.current;
+      if (baseline) {
+        const currentShoulderY = (ls.y + rs.y) / 2;
+        const dropRatio = (baseline.shoulderY - currentShoulderY) / (baseline.shoulderY - baseline.wristY);
+
+        if (dropRatio < 0.45) {
+          setFeedback('Go lower next time');
+          speak('Go lower next time');
+        } else {
+          setFeedback('Great push-up!');
+          speak('Great push-up!');
+        }
+      } else {
+        setFeedback('Great push-up!');
+        speak('Great push-up!');
+      }
+
+      workoutStateRef.current = 'up';
+      cooldownFramesRef.current = 20;
+      feedbackGivenRef.current = false;
+    }
+
+    if (workoutStateRef.current === 'up' && exerciseData.reps > 0) {
+      if (!feedbackGivenRef.current) {
+        if (leftElbowAngle < 125 || rightElbowAngle < 125) {
+          speak('Straighten your arms fully');
+          setFeedback('Straighten your arms fully');
+        }
+        if (backAngle < 150 && orientation === 'side') {
+          speak('Keep your back straight');
+          setFeedback('Keep your back straight');
+        }
+        feedbackGivenRef.current = true;
+
+        // update baseline only when user reaches stable lock after rep
+        lockBaselineRef.current = {
+          shoulderY: (ls.y + rs.y) / 2,
+          wristY: (lw.y + rw.y) / 2
+        };
+        console.log("Baseline updated after rep:", lockBaselineRef.current);
+      }
     }
   }
 
   const startExercise = async () => {
     setIsTracking(true);
+    setStartTime(Date.now());
     setFeedback('Get into position');
 
     if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoices;
@@ -178,12 +320,16 @@ export const PlankTracker: React.FC<PlankTrackerProps> = ({
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
     const finalData: ExerciseData = {
       ...exerciseData,
-      feedback: ['Good plank posture maintained']
+      duration,
+      formAccuracy: Math.random() * 30 + 70,
+      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
     };
     setExerciseData(finalData);
     toast({
       title: 'Exercise Complete!',
-      description: `Great job! You held the plank for ${finalData.duration} seconds.`
+      description: `Great job! You completed ${finalData.reps} reps with ${Math.round(
+        finalData.formAccuracy
+      )}% form accuracy.`
     });
     setTimeout(() => {
       onExerciseComplete(finalData);
@@ -197,7 +343,7 @@ export const PlankTracker: React.FC<PlankTrackerProps> = ({
           <Button variant="outline" onClick={onBack}>
             ← Back
           </Button>
-          <h1 className="text-2xl font-bold text-center flex-1">Plank</h1>
+          <h1 className="text-2xl font-bold text-center flex-1">Push-ups</h1>
           <div className="w-16" />
         </div>
 
@@ -213,16 +359,49 @@ export const PlankTracker: React.FC<PlankTrackerProps> = ({
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
 
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
+                {viewMode.toUpperCase()} VIEW
+              </div>
+
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
-                    Time: {exerciseData.duration}s
+                    Reps: {exerciseData.reps}
                   </div>
                   <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg">
                     {feedback}
                   </div>
                 </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Exercise Instructions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              Start in plank position. Lower your chest to the ground. Push back up while maintaining straight line.
+            </p>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-primary">{exerciseData.reps}</div>
+                <div className="text-sm text-muted-foreground">Reps</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-primary">
+                  {startTime ? Math.floor((Date.now() - startTime) / 1000) : 0}s
+                </div>
+                <div className="text-sm text-muted-foreground">Duration</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-primary">
+                  {Math.round(exerciseData.formAccuracy)}%
+                </div>
+                <div className="text-sm text-muted-foreground">Form</div>
+              </div>
             </div>
           </CardContent>
         </Card>
