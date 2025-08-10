@@ -19,12 +19,12 @@ interface ExerciseData {
   feedback: string[];
 }
 
-interface PlankTrackerProps {
+interface PushUpsTrackerProps {
   onExerciseComplete: (data: ExerciseData) => void;
   onBack: () => void;
 }
 
-export const PlanksTracker: React.FC<PlankTrackerProps> = ({
+export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   onExerciseComplete,
   onBack
 }) => {
@@ -100,6 +100,7 @@ export const PlanksTracker: React.FC<PlankTrackerProps> = ({
   }
 
   function onResults(results: any) {
+    console.log("onResults triggered", results);  // לוג למעקב אחרי קריאות של onResults
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -109,6 +110,7 @@ export const PlanksTracker: React.FC<PlankTrackerProps> = ({
 
     if (!results.poseLandmarks || results.poseLandmarks.length < 25) {
       setFeedback('Move back - not enough data');
+      console.log("Not enough landmarks detected");
       return;
     }
 
