@@ -11,12 +11,12 @@ interface ExerciseData {
   feedback: string[];
 }
 
-interface SquatsTrackerProps {
+interface MountainClimbersTrackerProps {
   onExerciseComplete: (data: ExerciseData) => void;
   onBack: () => void;
 }
 
-export const SquatsTracker: React.FC<SquatsTrackerProps> = ({
+export const MountainClimbersTracker: React.FC<MountainClimbersTrackerProps> = ({
   onExerciseComplete,
   onBack
 }) => {
@@ -98,7 +98,7 @@ export const SquatsTracker: React.FC<SquatsTrackerProps> = ({
     
     toast({
       title: "Exercise Complete!",
-      description: `Great job! You completed ${finalData.reps} reps with ${Math.round(finalData.formAccuracy)}% form accuracy.`,
+      description: `Great job! You performed for ${duration} seconds with ${Math.round(finalData.formAccuracy)}% form accuracy.`,
     });
 
     setTimeout(() => {
@@ -114,26 +114,26 @@ export const SquatsTracker: React.FC<SquatsTrackerProps> = ({
         return;
       }
 
-      repCount++;
+      repCount += 2; // Count both legs
       setExerciseData(prev => ({ ...prev, reps: repCount }));
       
       // Simulate feedback
       const feedbackMessages = [
-        'Good form!',
-        'Keep going!',
-        'Excellent rep!',
-        'Maintain control',
+        'Keep the pace!',
+        'Core engaged!',
+        'Great rhythm!',
+        'Stay strong!',
         'Perfect!',
       ];
       
       setFeedback(feedbackMessages[Math.floor(Math.random() * feedbackMessages.length)]);
 
-      // Stop after 10-15 reps for demo
-      if (repCount >= 10 + Math.random() * 5) {
+      // Auto-stop after 45 seconds for demo
+      if (startTime && (Date.now() - startTime) >= 45000) {
         clearInterval(interval);
         stopExercise();
       }
-    }, 2000 + Math.random() * 1000); // Vary timing between reps
+    }, 1000); // Fast pace for mountain climbers
   };
 
   return (
@@ -145,7 +145,7 @@ export const SquatsTracker: React.FC<SquatsTrackerProps> = ({
             ← Back
           </Button>
           <h1 className="text-2xl font-bold text-center flex-1">
-            Squats
+            Mountain Climbers
           </h1>
           <div className="w-16" /> {/* Spacer */}
         </div>
@@ -197,7 +197,7 @@ export const SquatsTracker: React.FC<SquatsTrackerProps> = ({
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Stand with feet shoulder-width apart. Lower your hips back and down. Keep your chest up and knees behind toes.
+              Dynamic cardio exercise targeting core and cardiovascular system. Start in plank position and alternate bringing knees to chest rapidly.
             </p>
             
             {/* Current stats */}
