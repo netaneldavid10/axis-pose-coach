@@ -15,18 +15,16 @@ declare global {
 }
 
 interface ExerciseData {
-  reps: number;
   duration: number;
-  formAccuracy: number;
   feedback: string[];
 }
 
-interface PushUpsTrackerProps {
+interface PlankTrackerProps {
   onExerciseComplete: (data: ExerciseData) => void;
   onBack: () => void;
 }
 
-export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
+export const PlankTracker: React.FC<PlankTrackerProps> = ({
   onExerciseComplete,
   onBack
 }) => {
@@ -34,30 +32,15 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
-    reps: 0,
     duration: 0,
-    formAccuracy: 0,
     feedback: []
   });
   const [feedback, setFeedback] = useState('');
-  const [viewMode, setViewMode] = useState<'front' | 'side'>('front');
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  const workoutStateRef = useRef<'ready' | 'up' | 'down'>('ready');
-  const readyFramesRef = useRef(0);
+  const workoutStateRef = useRef<'ready' | 'holding'>('ready');
   const cooldownFramesRef = useRef(0);
-
-  let orientation: 'front' | 'side' = 'side';
-  let lostFrames = 0;
-
-  const prevScaleRef = useRef<number | null>(null);
-  const unstableFramesRef = useRef(0);
-
-  const lockFramesRef = useRef(0);
-  const feedbackGivenRef = useRef(false);
-
-  const lockBaselineRef = useRef<{ shoulderY: number; wristY: number; shoulderZ: number } | null>(null);
 
   const synth = window.speechSynthesis;
   let selectedVoice: SpeechSynthesisVoice | null = null;
@@ -94,6 +77,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
       null;
   }
 
+  // פונקציה לחישוב זווית בין 3 נקודות
   function angle(a: any, b: any, c: any) {
     const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
     const cb = { x: b.x - c.x, y: b.y - c.y, z: b.z - c.z };
@@ -104,38 +88,19 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
 
-  function detectOrientation(lm: any[]) {
-    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
-    const hipDist = Math.abs(lm[23].x - lm[24].x);
-    const totalWidth = Math.max(shoulderDist, hipDist);
-    const totalHeight = Math.abs(lm[0].y - lm[24].y);
-    const ratio = totalWidth / totalHeight;
-    return ratio > 0.65 ? 'front' : 'side';
-  }
-
+  // פונקציה לזיהוי יציבות בתנוחת פלנק
   function isStable(lm: any[]): boolean {
-    const shoulderDist = Math.abs(lm[11].x - lm[12].x);
-    const hipDist = Math.abs(lm[23].x - lm[24].x);
-    const scale = Math.max(shoulderDist, hipDist);
+    // מדוד את הזווית בין הראש לכתפיים ולירך
+    const head = lm[0], shoulderL = lm[11], shoulderR = lm[12], hipL = lm[23], hipR = lm[24];
+    const shoulderAngle = angle(shoulderL, head, shoulderR);
+    const hipAngle = angle(hipL, shoulderL, shoulderR);
 
-    // Include depth (Z) in the stability check
-    const shoulderDepth = Math.abs(lm[11].z - lm[12].z);
-    const hipDepth = Math.abs(lm[23].z - lm[24].z);
-
-    if (prevScaleRef.current) {
-      const change = Math.abs(scale - prevScaleRef.current) / prevScaleRef.current;
-      if (change > 0.25 || shoulderDepth > 0.2 || hipDepth > 0.2) {
-        unstableFramesRef.current++;
-        if (unstableFramesRef.current < 10) return false;
-      } else {
-        unstableFramesRef.current = 0;
-      }
-    }
-    prevScaleRef.current = scale;
-    return true;
+    // אם הזוויות גדולות מדי (מעידות על עיקול גב), החזק את הפלנק לא יציב
+    return shoulderAngle < 20 && hipAngle < 20;
   }
 
   function onResults(results: any) {
+    console.log("onResults triggered", results);  // לוג למעקב אחרי קריאות של onResults
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -145,57 +110,38 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
 
     if (!results.poseLandmarks || results.poseLandmarks.length < 25) {
       setFeedback('Move back - not enough data');
+      console.log("Not enough landmarks detected");
       return;
     }
 
     const lm = results.poseLandmarks;
-    const ls = lm[11], rs = lm[12], le = lm[13], re = lm[14], lw = lm[15], rw = lm[16];
-    const lh = lm[23], lk = lm[25], nose = lm[0];
-
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    const leftElbowAngle = angle(ls, le, lw);
-    const rightElbowAngle = angle(rs, re, rw);
+    const isStableNow = isStable(lm);
 
-    // Include Z depth for stability checks
-    const zDropL = ls.z - lw.z;
-    const zDropR = rs.z - rw.z;
-
-    let downDetected = false;
-    let upDetected = false;
-
-    if (orientation === 'side') {
-      downDetected =
-        (leftElbowAngle < 125 && rightElbowAngle < 125) ||
-        (zDropL > 0.05 && zDropR > 0.05);
-      upDetected =
-        (leftElbowAngle > 145 && rightElbowAngle > 145) ||
-        (zDropL < 0.08 && zDropR < 0.08);
+    if (!isStableNow) {
+      setFeedback('Adjust your position!');
     } else {
-      const shoulderY = (ls.y + rs.y) / 2;
-      const shoulderZ = (ls.z + rs.z) / 2;
-      const deltaShoulder = shoulderY - nose.y;
-      const deltaShoulderZ = shoulderZ - nose.z;
-      downDetected =
-        (leftElbowAngle < 120 && rightElbowAngle < 120) ||
-        (deltaShoulder > 0.12 && deltaShoulderZ > 0.1);
-      upDetected =
-        (leftElbowAngle > 150 && rightElbowAngle > 150) ||
-        (deltaShoulder < 0.08 && deltaShoulderZ < 0.08);
+      setFeedback('Great plank! Keep holding!');
     }
 
-    // Continue rep detection logic
-    if (workoutStateRef.current === 'down' && upDetected) {
-      setExerciseData(prev => ({ ...prev, reps: prev.reps + 1 }));
-      workoutStateRef.current = 'up';
-      cooldownFramesRef.current = 20;
+    // אם יש יציבות, תן משוב טוב וחשב את זמן הפלנק
+    if (isStableNow && workoutStateRef.current === 'ready') {
+      workoutStateRef.current = 'holding';
+      setFeedback('Plank started, keep holding!');
+      speak('Plank started, keep holding!');
+      setStartTime(Date.now());
+    }
+
+    if (workoutStateRef.current === 'holding') {
+      const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+      setExerciseData(prev => ({ ...prev, duration }));
     }
   }
 
   const startExercise = async () => {
     setIsTracking(true);
-    setStartTime(Date.now());
     setFeedback('Get into position');
 
     if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoices;
@@ -232,16 +178,12 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
     const finalData: ExerciseData = {
       ...exerciseData,
-      duration,
-      formAccuracy: Math.random() * 30 + 70,
-      feedback: ['Good form maintained', 'Keep your back straight', 'Controlled movements']
+      feedback: ['Good plank posture maintained']
     };
     setExerciseData(finalData);
     toast({
       title: 'Exercise Complete!',
-      description: `Great job! You completed ${finalData.reps} reps with ${Math.round(
-        finalData.formAccuracy
-      )}% form accuracy.`
+      description: `Great job! You held the plank for ${finalData.duration} seconds.`
     });
     setTimeout(() => {
       onExerciseComplete(finalData);
@@ -255,7 +197,7 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
           <Button variant="outline" onClick={onBack}>
             ← Back
           </Button>
-          <h1 className="text-2xl font-bold text-center flex-1">Push-ups</h1>
+          <h1 className="text-2xl font-bold text-center flex-1">Plank</h1>
           <div className="w-16" />
         </div>
 
@@ -271,49 +213,16 @@ export const PushUpsTracker: React.FC<PushUpsTrackerProps> = ({
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               </div>
 
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600/80 text-white px-4 py-2 rounded-lg font-bold text-lg">
-                {viewMode.toUpperCase()} VIEW
-              </div>
-
               {isTracking && (
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute top-16 left-4 bg-primary text-white px-4 py-2 rounded-lg font-bold text-xl">
-                    Reps: {exerciseData.reps}
+                    Time: {exerciseData.duration}s
                   </div>
                   <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg">
                     {feedback}
                   </div>
                 </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Exercise Instructions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Start in plank position. Lower your chest to the ground. Push back up while maintaining straight line.
-            </p>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-bold text-primary">{exerciseData.reps}</div>
-                <div className="text-sm text-muted-foreground">Reps</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-primary">
-                  {startTime ? Math.floor((Date.now() - startTime) / 1000) : 0}s
-                </div>
-                <div className="text-sm text-muted-foreground">Duration</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-primary">
-                  {Math.round(exerciseData.formAccuracy)}%
-                </div>
-                <div className="text-sm text-muted-foreground">Form</div>
-              </div>
             </div>
           </CardContent>
         </Card>
