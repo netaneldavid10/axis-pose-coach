@@ -6,7 +6,7 @@ import { Camera, Square, RotateCcw } from 'lucide-react';
 
 interface ExerciseData {
   reps: number;
-  duration: number; // seconds
+  duration: number; // seconds (active only)
   formAccuracy: number;
   feedback: string[];
 }
@@ -22,7 +22,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // ---- UI/State ----
+  // ---- UI / State ----
   const [isTracking, setIsTracking] = useState(false);
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
     reps: 0,
@@ -30,103 +30,114 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
     formAccuracy: 0,
     feedback: []
   });
-  const [feedback, setFeedback] = useState('Get into plank position to start');
+  const [feedback, setFeedback] = useState('Get into forearm plank position to start');
   const { toast } = useToast();
 
-  // ---- Phase & timing ----
+  // שמירה על ערך isTracking עדכני בתוך onResults (שחי מחוץ למחזור הרנדר של React)
+  const isTrackingRef = useRef(false);
+  useEffect(() => { isTrackingRef.current = isTracking; }, [isTracking]);
+
+  // ---- Phase & timing (immediate start/stop) ----
   const phaseRef = useRef<Phase>('ready');
-  const stableFramesRef = useRef(0);
-  const unstableFramesRef = useRef(0);
-  const START_FRAMES = 12;   // ~0.2s ב-60fps להתחלה יציבה
-  const STOP_FRAMES  = 6;    // ~0.1s ליציאה (רגיש ומהיר)
 
-  // זמן שנצבר רק כשהפוזה יציבה
-  const accumulatedMsRef = useRef(0);
-  const segmentStartRef = useRef<number | null>(null);
+  // מצטבר רק בזמן יציבות
+  const accumulatedMsRef = useRef(0);        // סה״כ זמן פעיל שנצבר
+  const segmentStartRef = useRef<number|null>(null); // תחילת המקטע הנוכחי (כשנכנסים לפלנק)
 
-  // רענון תצוגת זמן חלק בעזרת rAF
-  const [rafTick, setRafTick] = useState(0);
-  useEffect(() => {
-    let rafId: number;
-    const loop = () => {
-      setRafTick(performance.now()); // גורם לרנדר קל (~60fps)
-      rafId = requestAnimationFrame(loop);
-    };
-    rafId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
-
-  // דיבור בטוח (אופציונלי)
+  // (אופציונלי) קריינות
   const speak = (text: string) => {
     try {
       if ('speechSynthesis' in window) {
         const u = new SpeechSynthesisUtterance(text);
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
+        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
       }
     } catch {}
   };
 
-  // ---- גיאומטריה ----
-  function angle(a: any, b: any, c: any) {
+  // ---------- גיאומטריה ----------
+  const ang = (a: any, b: any, c: any) => {
     if (!a || !b || !c) return 999;
-    const ab = { x: a.x - b.x, y: a.y - b.y, z: (a.z ?? 0) - (b.z ?? 0) };
-    const cb = { x: c.x - b.x, y: c.y - b.y, z: (c.z ?? 0) - (b.z ?? 0) };
-    const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
-    const mag1 = Math.hypot(ab.x, ab.y, ab.z);
-    const mag2 = Math.hypot(cb.x, cb.y, cb.z);
+    const abx = a.x - b.x, aby = a.y - b.y, abz = (a.z ?? 0) - (b.z ?? 0);
+    const cbx = c.x - b.x, cby = c.y - b.y, cbz = (c.z ?? 0) - (b.z ?? 0);
+    const dot = abx * cbx + aby * cby + abz * cbz;
+    const mag1 = Math.hypot(abx, aby, abz);
+    const mag2 = Math.hypot(cbx, cby, cbz);
     const cos = dot / Math.max(1e-6, mag1 * mag2);
     return Math.acos(Math.min(1, Math.max(-1, cos))) * (180 / Math.PI);
-  }
-  const mid = (p: any, q: any) => (p && q ? { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: ((p.z ?? 0) + (q.z ?? 0)) / 2 } : null);
-  const degTo = (dx: number, dy: number) => (Math.atan2(dy, dx) * 180) / Math.PI;
+  };
+  const slopeDeg = (p: any, q: any) =>
+    (p && q ? (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI : 999);
+  const vis = (p: any) => (p && typeof p.visibility === 'number' ? p.visibility : 0);
 
-  // ניקוד יציבות לפלנק (front/side), כולל היסטרזיס וספים ניתנים לשינוי
-  function isPlankStable(lm: any[]): { stable: boolean; reason?: string } {
-    const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26], ankL = lm[27], ankR = lm[28];
-
-    if (!shL || !shR || !hipL || !hipR) return { stable: false, reason: 'not enough landmarks' };
-
-    const shoulderMid = mid(shL, shR);
-    const hipMid = mid(hipL, hipR);
-    const kneeMid = kneeL && kneeR ? mid(kneeL, kneeR) : null;
-    const ankleMid = ankL && ankR ? mid(ankL, ankR) : null;
-
-    // 1) גב ישר: זוויות ירך קרובות ל-180°
-    const hipAngleL = angle(shL, hipL, kneeL ?? ankL ?? hipR);
-    const hipAngleR = angle(shR, hipR, kneeR ?? ankR ?? hipL);
-    const hipsStraight = hipAngleL >= 160 && hipAngleR >= 160;
-
-    // 2) כתפיים-ירכיים בקו ישר
-    const torsoAngle = angle(shL, hipL, hipR); // זווית "פתיחה" בין הירכיים לכתפיים
-    const torsoAligned = torsoAngle <= 25;     // קטן = קו כמעט ישר
-
-    // 3) הגוף אופקי יחסית (פלנק, לא פלאנק הפוך/סקוואט)
-    // נשתמש בקו shoulderMid -> ankleMid/ kneeMid
-    const endPoint = ankleMid ?? kneeMid ?? hipMid;
-    if (!shoulderMid || !hipMid || !endPoint) return { stable: false, reason: 'not enough lower points' };
-    const vecDeg = Math.abs(degTo((endPoint.x - shoulderMid.x), (endPoint.y - shoulderMid.y)));
-    // פלנק אמור להיות בערך אופקי (0° או 180°). נאפשר עד 25°
-    const horizAligned = (vecDeg <= 25) || (Math.abs(180 - vecDeg) <= 25);
-
-    const all = hipsStraight && torsoAligned && horizAligned;
-    return { stable: all };
+  // בוחר צד דומיננטי לפי visibility (שירכיבים באותו צד מזוהים טוב יותר)
+  function pickDominantSide(lm: any[]) {
+    const L = { shoulder: lm[11], elbow: lm[13], wrist: lm[15], hip: lm[23], knee: lm[25], ankle: lm[27] };
+    const R = { shoulder: lm[12], elbow: lm[14], wrist: lm[16], hip: lm[24], knee: lm[26], ankle: lm[28] };
+    const score = (S: any) =>
+      vis(S.hip) * 1.2 + vis(S.knee) + vis(S.ankle) + vis(S.shoulder) * 0.5 + vis(S.elbow) + vis(S.wrist);
+    const side = score(L) >= score(R) ? 'L' : 'R';
+    const S = side === 'L' ? L : R;
+    return { side, ...S };
   }
 
-  // ---- התחלת/עצירת האימון ----
+  // ---------- זיהוי Forearm Plank (side view) ----------
+  // התניית זיהוי כדי לא להתבלבל עם push-up:
+  // - טורסו אופקי (כתף→ירך)
+  // - ירך ישרה (כתף–ירך–ברך/קרסול ≥ 160°)
+  // - מרפק כפוף ~90° (80–110°)
+  // - אמה אופקית (מרפק→שורש ≤ 25°)
+  // - כתף ~מעל מרפק (|שיפוע - 90°| ≤ 30°)
+  function isPlankStableSideForearm(lm: any[]) {
+    if (!lm) return { stable: false as const };
+
+    const { side, shoulder, elbow, wrist, hip, knee, ankle } = pickDominantSide(lm);
+    if (!shoulder || !hip || !elbow || !wrist) return { stable: false as const };
+
+    const torsoSlope = slopeDeg(shoulder, hip);
+    const torsoHorizOk = Math.min(Math.abs(torsoSlope), Math.abs(180 - Math.abs(torsoSlope))) <= 25;
+
+    const kneeOrAnkle = knee ?? ankle;
+    const hipAngle = ang(shoulder, hip, kneeOrAnkle);
+    const hipStraightOk = hipAngle >= 160;
+
+    const elbowAngle = ang(shoulder, elbow, wrist);
+    const elbowBentOk = elbowAngle >= 80 && elbowAngle <= 110;
+
+    const forearmSlope = slopeDeg(elbow, wrist);
+    const forearmHorizOk = Math.min(Math.abs(forearmSlope), Math.abs(180 - Math.abs(forearmSlope))) <= 25;
+
+    const shoulderElbowSlope = slopeDeg(shoulder, elbow);
+    const shoulderOverElbowOk = Math.abs(Math.abs(shoulderElbowSlope) - 90) <= 30;
+
+    const stable =
+      torsoHorizOk && hipStraightOk && elbowBentOk && forearmHorizOk && shoulderOverElbowOk;
+
+    // נתוני דיבאג (אפשר לכבות בהמשך)
+    return {
+      stable,
+      meta: {
+        side,
+        torsoSlope: Math.round(torsoSlope),
+        hipAngle: Math.round(hipAngle),
+        elbowAngle: Math.round(elbowAngle),
+        forearmSlope: Math.round(forearmSlope),
+        shoulderElbowSlope: Math.round(shoulderElbowSlope)
+      }
+    };
+  }
+
+  // ---------- שליטה ידנית ----------
   const startExercise = () => {
     setIsTracking(true);
-    setFeedback('Get into plank position…');
+    setFeedback('Get into forearm plank…');
     phaseRef.current = 'ready';
-    stableFramesRef.current = 0;
-    unstableFramesRef.current = 0;
     accumulatedMsRef.current = 0;
     segmentStartRef.current = null;
     setExerciseData(prev => ({ ...prev, duration: 0 }));
   };
 
   const stopExercise = () => {
-    // סגור קטע פתוח אם יש
+    // אם היית בפלנק כשעצרנו → סגור את המקטע האחרון
     if (phaseRef.current === 'holding' && segmentStartRef.current != null) {
       accumulatedMsRef.current += performance.now() - segmentStartRef.current;
       segmentStartRef.current = null;
@@ -138,7 +149,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
       ...exerciseData,
       duration: durationSec,
       formAccuracy: Math.random() * 30 + 70,
-      feedback: ['Kept core engaged', 'Neutral spine', 'Good control']
+      feedback: ['Forearm plank detected', 'Neutral spine', 'Good control']
     };
     setExerciseData(finalData);
 
@@ -147,10 +158,10 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
       description: `Plank time: ${durationSec}s with ${Math.round(finalData.formAccuracy)}% form accuracy.`
     });
 
-    setTimeout(() => onExerciseComplete(finalData), 1000);
+    setTimeout(() => onExerciseComplete(finalData), 600);
   };
 
-  // ---- ציור/תוצאות ממדיה-פייפ ----
+  // ---------- MediaPipe onResults ----------
   const onResults = (results: any) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -166,60 +177,63 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
     ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
     const lm = results.poseLandmarks;
-    if (!lm || lm.length < 29) {
-      setFeedback('Move back - not enough data');
-      // עצור צבירה אם אין נתונים
-      if (phaseRef.current === 'holding') {
-        unstableFramesRef.current++;
-        if (unstableFramesRef.current >= STOP_FRAMES) {
-          // עצירה
-          phaseRef.current = 'ready';
-          if (segmentStartRef.current != null) {
-            accumulatedMsRef.current += performance.now() - segmentStartRef.current;
-            segmentStartRef.current = null;
-          }
-          setFeedback('Hold still to resume');
-        }
-      }
+
+    // צייר שלד לעזר
+    if (lm) {
+      (window as any).drawConnectors(ctx, lm, (window as any).POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+      (window as any).drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
+    }
+
+    if (!isTrackingRef.current) {
+      // מצב תצוגה בלבד; לא סופרים זמן
       return;
     }
 
-    // ציור עזר
-    (window as any).drawConnectors(ctx, lm, (window as any).POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
-    (window as any).drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
-
-    const { stable } = isPlankStable(lm);
-
-    if (stable) {
-      unstableFramesRef.current = 0;
-      stableFramesRef.current++;
-
-      if (phaseRef.current !== 'holding' && stableFramesRef.current >= START_FRAMES) {
-        // מתחילים לצבור זמן
-        phaseRef.current = 'holding';
-        segmentStartRef.current = performance.now();
-        setFeedback('Great! Hold the plank');
-        speak('Plank started');
+    if (!lm || lm.length < 29) {
+      // אין מספיק נקודות → אם היינו בפוזיציה, עצור מיד
+      if (phaseRef.current === 'holding' && segmentStartRef.current != null) {
+        accumulatedMsRef.current += performance.now() - segmentStartRef.current;
+        segmentStartRef.current = null;
+        phaseRef.current = 'ready';
       }
+      setFeedback('Move back - not enough data');
     } else {
-      stableFramesRef.current = 0;
-      if (phaseRef.current === 'holding') {
-        unstableFramesRef.current++;
-        if (unstableFramesRef.current >= STOP_FRAMES) {
-          // עצירת צבירה
-          phaseRef.current = 'ready';
-          if (segmentStartRef.current != null) {
-            accumulatedMsRef.current += performance.now() - segmentStartRef.current;
-            segmentStartRef.current = null;
-          }
-          setFeedback('Adjust and get stable to resume');
+      const { stable, meta } = isPlankStableSideForearm(lm);
+
+      // דיבאג על המסך
+      if (meta) {
+        const text = `Side:${meta.side} torso:${meta.torsoSlope}° hip:${meta.hipAngle}° elbow:${meta.elbowAngle}° forearm:${meta.forearmSlope}° SE:${meta.shoulderElbowSlope}°`;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        const w = Math.max(260, ctx.measureText(text).width + 16);
+        ctx.fillRect(8, 8, w, 30);
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px monospace';
+        ctx.fillText(text, 14, 28);
+      }
+
+      // ***** Immediate start/stop logic *****
+      if (stable) {
+        if (phaseRef.current !== 'holding') {
+          // נכנסת לפוזיציה עכשיו → התחל מייד
+          phaseRef.current = 'holding';
+          segmentStartRef.current = performance.now();
+          setFeedback('Great! Hold the forearm plank');
+          speak('Plank started');
         }
       } else {
-        setFeedback('Get into plank position…');
+        if (phaseRef.current === 'holding' && segmentStartRef.current != null) {
+          // יצאת מהפוזיציה → עצור מייד והוסף זמן מצטבר
+          accumulatedMsRef.current += performance.now() - segmentStartRef.current;
+          segmentStartRef.current = null;
+          phaseRef.current = 'ready';
+          setFeedback('Adjust and get stable to resume (forearms)');
+        } else {
+          setFeedback('Get into forearm plank…');
+        }
       }
     }
 
-    // עדכון משך לתצוגה (חישוב נגזר, ללא setState כבד)
+    // עדכון זמן מוצג (שניות של זמן פעיל בלבד)
     const totalMs =
       accumulatedMsRef.current +
       (phaseRef.current === 'holding' && segmentStartRef.current != null
@@ -227,11 +241,10 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
         : 0);
 
     const secs = Math.floor(totalMs / 1000);
-    // נשמור רק אם השתנה, כדי לצמצם רינדורים מיותרים
     setExerciseData(prev => (prev.duration === secs ? prev : { ...prev, duration: secs }));
   };
 
-  // ---- אתחול MediaPipe Pose + Camera ----
+  // ---------- אתחול MediaPipe Pose + Camera ----------
   useEffect(() => {
     let cameraInstance: any | null = null;
     let pose: any | null = null;
@@ -252,9 +265,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
 
       if (videoRef.current) {
         cameraInstance = new (window as any).Camera(videoRef.current, {
-          onFrame: async () => {
-            await pose!.send({ image: videoRef.current! });
-          },
+          onFrame: async () => { await pose!.send({ image: videoRef.current! }); },
           width: 640,
           height: 480
         });
@@ -270,7 +281,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
     }
 
     return () => {
-      try { if (cameraInstance?.stop) cameraInstance.stop(); } catch {}
+      try { cameraInstance?.stop?.(); } catch {}
       try {
         if (videoRef.current?.srcObject) {
           const stream = videoRef.current.srcObject as MediaStream;
@@ -278,12 +289,11 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
           (videoRef.current as any).srcObject = null;
         }
       } catch {}
-      try { if (pose?.close) pose.close(); } catch {}
+      try { pose?.close?.(); } catch {}
     };
   }, []); // init once
 
-  // ---- הצגת זמן חלק בתצוגה ----
-  const displaySeconds = exerciseData.duration; // כבר מחושב בנגזרת למעלה
+  const displaySeconds = exerciseData.duration;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 p-4">
@@ -322,7 +332,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
           <CardHeader><CardTitle>Exercise Instructions</CardTitle></CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
-              Hold plank with a straight line from shoulders to ankles. Keep core engaged.
+              Forearm plank only (side view). Elbows under shoulders, neutral spine. Timer runs only while stable.
             </p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
@@ -345,7 +355,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({ onExerciseComplete
           {!isTracking ? (
             <Button
               size="lg"
-              onClick={startExercise}
+              onClick={() => { setIsTracking(true); startExercise(); }}
               className="bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white px-8 py-4 text-lg font-semibold rounded-2xl"
             >
               <Camera className="h-6 w-6 mr-3" />
