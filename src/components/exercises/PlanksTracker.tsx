@@ -22,6 +22,8 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // מצבים ובקרות
   const [isTracking, setIsTracking] = useState(false);
   const [exerciseData, setExerciseData] = useState<ExerciseData>({
     reps: 0,
@@ -33,80 +35,61 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    initializeCamera();
-    return () => {
-      stopCamera();
-    };
-  }, []);
+  // מצב אימון (תוקן - היה חסר בקוד)
+  const workoutStateRef = useRef<'idle' | 'ready' | 'holding'>('ready');
 
-  const initializeCamera = async () => {
+  // Throttle לעדכוני משוב/זמן
+  const lastFeedbackTsRef = useRef<number>(0);
+  const lastDurationTsRef = useRef<number>(0);
+
+  // פונקציית דיבור בטוחה (תוקן - היה חסר)
+  const speak = (text: string) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: 640,
-          height: 480,
-          facingMode: 'user'
-        }
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance(text);
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
       }
-    } catch (error) {
-      toast({
-        title: "Camera Error",
-        description: "Unable to access camera. Please check permissions.",
-        variant: "destructive",
-      });
-    }
+    } catch { /* no-op */ }
   };
 
-  const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-    }
-  };
-
-  // פונקציה לחישוב זווית בין 3 נקודות
+  // ---- חישובי זווית/יציבות ----
   function angle(a: any, b: any, c: any) {
-    const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
-    const cb = { x: b.x - c.x, y: b.y - c.y, z: b.z - c.z };
+    const ab = { x: b.x - a.x, y: b.y - a.y, z: (b.z ?? 0) - (a.z ?? 0) };
+    const cb = { x: b.x - c.x, y: b.y - c.y, z: (b.z ?? 0) - (c.z ?? 0) };
     const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
-    const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2 + ab.z ** 2);
-    const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2 + cb.z ** 2);
-    const cosine = dot / (magAB * magCB);
+    const magAB = Math.hypot(ab.x, ab.y, ab.z);
+    const magCB = Math.hypot(cb.x, cb.y, cb.z);
+    const cosine = dot / Math.max(1e-6, magAB * magCB);
     return Math.acos(Math.min(Math.max(cosine, -1), 1)) * (180 / Math.PI);
   }
 
-  // פונקציה לזיהוי יציבות בתנוחת פלנק
   function isStable(lm: any[]): boolean {
     const head = lm[0], shoulderL = lm[11], shoulderR = lm[12], hipL = lm[23], hipR = lm[24];
+    if (!head || !shoulderL || !shoulderR || !hipL || !hipR) return false;
+
     const shoulderAngle = angle(shoulderL, head, shoulderR);
     const hipAngle = angle(hipL, shoulderL, shoulderR);
-
+    // סף ראשוני, אפשר לכייל אחר כך
     return shoulderAngle < 20 && hipAngle < 20;
   }
 
+  // ---- לוגיקת התחלה/סיום ----
   const startExercise = () => {
     setIsTracking(true);
     setStartTime(Date.now());
     setFeedback('Exercise started! Keep good form.');
-    
-    // Simulate exercise tracking
-    simulateExerciseTracking();
+    workoutStateRef.current = 'ready';
   };
 
   const stopExercise = () => {
     setIsTracking(false);
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
-    
+
     const finalData: ExerciseData = {
       ...exerciseData,
       duration,
-      formAccuracy: Math.random() * 30 + 70, // Simulate 70-100% accuracy
+      formAccuracy: Math.random() * 30 + 70,
       feedback: [
         'Good form maintained',
         'Keep your back straight',
@@ -115,7 +98,7 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({
     };
 
     setExerciseData(finalData);
-    
+
     toast({
       title: "Exercise Complete!",
       description: `Great job! You held the plank for ${duration} seconds with ${Math.round(finalData.formAccuracy)}% form accuracy.`,
@@ -123,108 +106,132 @@ export const PlanksTracker: React.FC<PlanksTrackerProps> = ({
 
     setTimeout(() => {
       onExerciseComplete(finalData);
-    }, 2000);
+    }, 1200);
   };
 
-  const simulateExerciseTracking = () => {
-    const interval = setInterval(() => {
-      if (!isTracking) {
-        clearInterval(interval);
-        return;
-      }
-
-      // Simulate feedback for plank hold
-      const feedbackMessages = [
-        'Hold steady!',
-        'Keep core engaged!',
-        'Great form!',
-        'Stay strong!',
-        'Perfect!',
-      ];
-      
-      setFeedback(feedbackMessages[Math.floor(Math.random() * feedbackMessages.length)]);
-
-      // Auto-stop after 60 seconds for demo
-      if (startTime && (Date.now() - startTime) >= 60000) {
-        clearInterval(interval);
-        stopExercise();
-      }
-    }, 3000); // Update feedback every 3 seconds
-  };
-
+  // ---- ציור תוצאות ----
   const onResults = (results: any) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    const video = videoRef.current;
+    if (!canvas || !ctx || !video) return;
+
+    // ודא שמידות הקנבס תואמות לווידאו (חשוב לביצועים)
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
     if (!results.poseLandmarks || results.poseLandmarks.length < 25) {
-      setFeedback('Move back - not enough data');
+      const now = performance.now();
+      if (now - lastFeedbackTsRef.current > 500) {
+        setFeedback('Move back - not enough data');
+        lastFeedbackTsRef.current = now;
+      }
       return;
     }
 
     const lm = results.poseLandmarks;
+    // ציור עזר
     window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
     window.drawLandmarks(ctx, lm, { color: '#FF0000', lineWidth: 2 });
 
-    const isStableNow = isStable(lm);
+    const stable = isStable(lm);
+    const now = performance.now();
 
-    if (!isStableNow) {
-      setFeedback('Adjust your position!');
+    if (!stable) {
+      if (now - lastFeedbackTsRef.current > 500) {
+        setFeedback('Adjust your position!');
+        lastFeedbackTsRef.current = now;
+      }
+      // אם יצאנו מיציבות באמצע
+      if (workoutStateRef.current === 'holding') {
+        workoutStateRef.current = 'ready';
+      }
     } else {
-      setFeedback('Great plank! Keep holding!');
+      if (workoutStateRef.current === 'ready') {
+        workoutStateRef.current = 'holding';
+        setFeedback('Plank started, keep holding!');
+        speak('Plank started, keep holding!');
+        setStartTime(Date.now());
+      } else if (workoutStateRef.current === 'holding') {
+        if (now - lastFeedbackTsRef.current > 1000) {
+          setFeedback('Great plank! Keep holding!');
+          lastFeedbackTsRef.current = now;
+        }
+      }
     }
 
-    // אם יש יציבות, תן משוב טוב וחשב את זמן הפלנק
-    if (isStableNow && workoutStateRef.current === 'ready') {
-      workoutStateRef.current = 'holding';
-      setFeedback('Plank started, keep holding!');
-      speak('Plank started, keep holding!');
-      setStartTime(Date.now());
-    }
-
+    // עדכון משך בתדירות נמוכה כדי לא להציף רינדורים
     if (workoutStateRef.current === 'holding') {
-      const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
-      setExerciseData(prev => ({ ...prev, duration }));
+      if (now - lastDurationTsRef.current > 250) {
+        const dur = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+        setExerciseData(prev => (prev.duration === dur ? prev : { ...prev, duration: dur }));
+        lastDurationTsRef.current = now;
+      }
     }
   };
 
+  // ---- אתחול MediaPipe Pose + Camera (ללא getUserMedia כפול) ----
   useEffect(() => {
-    const pose = new window.Pose({
-      locateFile: (file: string) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
-    });
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      enableSegmentation: false,
-      smoothSegmentation: false,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-    pose.onResults(onResults);
+    let cameraInstance: any | null = null;
+    let pose: any | null = null;
 
-    if (videoRef.current) {
-      const camera = new window.Camera(videoRef.current, {
-        onFrame: async () => {
-          await pose.send({ image: videoRef.current! });
-        },
-        width: 640,
-        height: 480
+    try {
+      pose = new (window as any).Pose({
+        locateFile: (file: string) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
       });
-      camera.start();
+      pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        smoothSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      pose.onResults(onResults);
+
+      if (videoRef.current) {
+        cameraInstance = new (window as any).Camera(videoRef.current, {
+          onFrame: async () => {
+            if (pose && videoRef.current) {
+              await pose.send({ image: videoRef.current });
+            }
+          },
+          width: 640,
+          height: 480
+        });
+        cameraInstance.start();
+      }
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Camera Error',
+        description: 'Unable to start camera/pose detection.',
+        variant: 'destructive'
+      });
     }
 
     return () => {
-      // Cleanup the camera when the component unmounts
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
+      try {
+        if (cameraInstance && cameraInstance.stop) cameraInstance.stop();
+      } catch {}
+      try {
+        if (videoRef.current && videoRef.current.srcObject) {
+          const stream = videoRef.current.srcObject as MediaStream;
+          stream.getTracks().forEach(t => t.stop());
+          (videoRef.current as any).srcObject = null;
+        }
+      } catch {}
+      try {
+        if (pose && pose.close) pose.close();
+      } catch {}
     };
-  }, []);
+  }, []); // init once
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 p-4">
