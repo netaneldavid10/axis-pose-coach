@@ -17,8 +17,6 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSetupComplete }) =
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
     age: '',
     height: '',
     weight: '',
@@ -46,8 +44,6 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSetupComplete }) =
       const { error } = await supabase
         .from('profiles')
         .update({
-          first_name: formData.firstName,
-          last_name: formData.lastName,
           age: parseInt(formData.age),
           height: parseFloat(formData.height),
           weight: parseFloat(formData.weight),
@@ -109,27 +105,6 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({ onSetupComplete }) =
               <div className="text-center mb-6">
                 <h3 className="text-lg font-semibold mb-2">Personal Information</h3>
                 <p className="text-muted-foreground text-sm">Tell us about yourself</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input
-                    id="firstName"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input
-                    id="lastName"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-                    required
-                  />
-                </div>
               </div>
 
               <div className="space-y-2">

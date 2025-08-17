@@ -43,11 +43,11 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
     }
 
     const { data: workoutData, error } = await supabase
-      .from('user_workouts')
+      .from('workouts')
       .select('*')
       .eq('user_id', user.id)
-      .gte('date', startDate.toISOString())
-      .order('date', { ascending: true });
+      .gte('created_at', startDate.toISOString())
+      .order('created_at', { ascending: true });
 
     if (error) {
       console.error("❌ Error fetching stats:", error);
@@ -58,9 +58,9 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
       setWorkouts(workoutData);
 
       const totalWorkouts = workoutData.length;
-      const totalPushups = workoutData.reduce((sum, w) => sum + (w.pushups_count || 0), 0);
+      const totalPushups = workoutData.reduce((sum, w) => sum + (w.total_reps || 0), 0);
       const averageAccuracy = workoutData.length > 0 
-        ? workoutData.reduce((sum, w) => sum + (w.form_score || 0), 0) / workoutData.length
+        ? workoutData.reduce((sum, w) => sum + (w.average_form_accuracy || 0), 0) / workoutData.length
         : 0;
 
       setStats({
@@ -73,9 +73,9 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
 
   const chartData = workouts.map((workout: any, index) => ({
     workout: `W${index + 1}`,
-    accuracy: workout.form_score || 0,
-    pushups: workout.pushups_count || 0,
-    date: new Date(workout.date).toLocaleDateString()
+    accuracy: workout.average_form_accuracy || 0,
+    pushups: workout.total_reps || 0,
+    date: new Date(workout.created_at).toLocaleDateString()
   }));
 
   return (

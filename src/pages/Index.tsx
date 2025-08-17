@@ -35,7 +35,11 @@ const Index = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser(session.user);
-        checkProfileStatus(session.user.id);
+        if (session.user.email_confirmed_at) {
+          checkProfileStatus(session.user.id);
+        } else {
+          setAppState('auth');
+        }
       } else {
         setUser(null);
         setAppState('auth');
@@ -49,7 +53,11 @@ const Index = () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setUser(session.user);
-      await checkProfileStatus(session.user.id);
+      if (session.user.email_confirmed_at) {
+        await checkProfileStatus(session.user.id);
+      } else {
+        setAppState('auth');
+      }
     }
   };
 

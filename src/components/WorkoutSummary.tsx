@@ -41,12 +41,20 @@ export const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
         return;
       }
 
-      const { error } = await supabase.from("user_workouts").insert([
+      const { error } = await supabase.from("workouts").insert([
         {
           user_id: user.id,
-          pushups_count: totalPushups,
-          form_score: Math.round(averageFormAccuracy)
-          // date נכנס אוטומטית ב-DB (default now())
+          total_reps: totalPushups,
+          average_form_accuracy: Math.round(averageFormAccuracy),
+          duration_seconds: totalDuration,
+          calories_burned: caloriesBurned,
+          type: "single_exercise",
+          exercises: exercises.map(ex => ({
+            name: ex.name,
+            reps: ex.reps,
+            duration: ex.duration,
+            form_accuracy: ex.formAccuracy
+          }))
         }
       ]);
 
@@ -58,7 +66,7 @@ export const WorkoutSummary: React.FC<WorkoutSummaryProps> = ({
     };
 
     saveWorkout();
-  }, [totalPushups, averageFormAccuracy]);
+  }, [totalPushups, averageFormAccuracy, totalDuration, caloriesBurned, exercises]);
 
   const getAccuracyColor = (accuracy: number) => {
     if (accuracy >= 90) return 'text-green-600';
