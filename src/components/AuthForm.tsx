@@ -72,8 +72,6 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuthSuccess }) => {
         title: "Account created!",
         description: "Please check your email to verify your account.",
       });
-      
-      onAuthSuccess();
     } catch (error: any) {
       toast({
         title: "Error",
