@@ -72,30 +72,36 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
     setIsLoading(true);
 
     try {
-      // Send to Make.com webhook
-      const response = await fetch('https://hook.eu2.make.com/o45lheqb4vgc5erbxf5x7imuq7jaxesl', {
+      // קורא לשרת שלנו שמבצע את הקריאה ל-OpenAI
+      const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: inputMessage,
-          userProfile: userProfile,
-          conversationHistory: messages.slice(-5) // Send last 5 messages for context
+          messages: [
+            // אם תרצה היסטוריה אמיתית, המפה את prev למבנה {role, content}
+            // כאן נשמור פשוט את הטקסט האחרון בלבד:
+            { role: 'user', content: userMessage.content }
+          ],
+          userProfile,
+          conversationHistory: messages.slice(-5)
         })
       });
 
-      const data = await response.json();
-      
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || 'API error');
+      }
+
+      const data = await res.json();
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: data.response || "I'm here to help! Let me know what specific advice you need.",
+        content: data.reply || "I'm here to help! Let me know what specific advice you need.",
         isUser: false,
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, aiMessage]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
