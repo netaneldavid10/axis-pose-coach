@@ -73,16 +73,25 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
     setIsLoading(true);
 
     try {
-      // קריאה לפונקציית Edge "chat" בסופאבייס
+      // ---- קריאה לפונקציית Edge של Supabase בשם "chat" ----
+      // ממליץ לשלוח היסטוריה מצומצמת כדי לא לנפח את הבקשה:
+      const compactHistory = messages.slice(-5).map((m) => ({
+        isUser: m.isUser,
+        content: m.content,
+      }));
+
       const { data, error } = await supabase.functions.invoke('chat', {
         body: {
           messages: [{ role: 'user', content: userMessage.content }],
-          userProfile,
-          conversationHistory: messages.slice(-5),
+        userProfile,
+          conversationHistory: compactHistory,
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('invoke(chat) error:', error);
+        throw error;
+      }
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -95,7 +104,7 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error: any) {
-      console.error('Error sending message:', error);
+      console.error('Edge Function error:', error?.message || error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         content:
@@ -140,9 +149,7 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${
-                      message.isUser ? 'justify-end' : 'justify-start'
-                    }`}
+                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
                       className={`max-w-[80%] rounded-lg p-3 ${
@@ -152,13 +159,9 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                       }`}
                     >
                       <div className="flex items-start space-x-2">
-                        {!message.isUser && (
-                          <Bot className="h-4 w-4 mt-1 flex-shrink-0" />
-                        )}
+                        {!message.isUser && <Bot className="h-4 w-4 mt-1 flex-shrink-0" />}
                         <p className="text-sm">{message.content}</p>
-                        {message.isUser && (
-                          <User className="h-4 w-4 mt-1 flex-shrink-0" />
-                        )}
+                        {message.isUser && <User className="h-4 w-4 mt-1 flex-shrink-0" />}
                       </div>
                       <p className="text-xs opacity-70 mt-1">
                         {message.timestamp.toLocaleTimeString()}
@@ -173,14 +176,8 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                         <Bot className="h-4 w-4" />
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
-                          <div
-                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                            style={{ animationDelay: '0.1s' }}
-                          ></div>
-                          <div
-                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                            style={{ animationDelay: '0.2s' }}
-                          ></div>
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                         </div>
                       </div>
                     </div>
@@ -198,10 +195,7 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                   placeholder="Ask your coach anything..."
                   disabled={isLoading}
                 />
-                <Button
-                  onClick={sendMessage}
-                  disabled={isLoading || !inputMessage.trim()}
-                >
+                <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
