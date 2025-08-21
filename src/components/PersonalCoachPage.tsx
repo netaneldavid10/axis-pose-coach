@@ -21,10 +21,11 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: "Hi! I'm your personal AI coach. I have access to all your workout data and I'm here to help you achieve your fitness goals. What would you like to know?",
+      content:
+        "Hi! I'm your personal AI coach. I have access to all your workout data and I'm here to help you achieve your fitness goals. What would you like to know?",
       isUser: false,
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    },
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +54,7 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
 
     setUserProfile({
       ...profile,
-      recentWorkouts: workouts || []
+      recentWorkouts: workouts || [],
     });
   };
 
@@ -64,52 +65,45 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
       id: Date.now().toString(),
       content: inputMessage,
       isUser: true,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
 
     try {
-      // קורא לשרת שלנו שמבצע את הקריאה ל-OpenAI
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            // אם תרצה היסטוריה אמיתית, המפה את prev למבנה {role, content}
-            // כאן נשמור פשוט את הטקסט האחרון בלבד:
-            { role: 'user', content: userMessage.content }
-          ],
+      // קריאה לפונקציית Edge "chat" בסופאבייס
+      const { data, error } = await supabase.functions.invoke('chat', {
+        body: {
+          messages: [{ role: 'user', content: userMessage.content }],
           userProfile,
-          conversationHistory: messages.slice(-5)
-        })
+          conversationHistory: messages.slice(-5),
+        },
       });
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || 'API error');
-      }
+      if (error) throw error;
 
-      const data = await res.json();
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: data.reply || "I'm here to help! Let me know what specific advice you need.",
+        content:
+          data?.reply ||
+          "I'm here to help! Let me know what specific advice you need.",
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages((prev) => [...prev, aiMessage]);
     } catch (error: any) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "I'm having trouble connecting right now. Please try again later!",
+        content:
+          "I'm having trouble connecting right now. Please try again later!",
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +140,9 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${
+                      message.isUser ? 'justify-end' : 'justify-start'
+                    }`}
                   >
                     <div
                       className={`max-w-[80%] rounded-lg p-3 ${
@@ -156,9 +152,13 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                       }`}
                     >
                       <div className="flex items-start space-x-2">
-                        {!message.isUser && <Bot className="h-4 w-4 mt-1 flex-shrink-0" />}
+                        {!message.isUser && (
+                          <Bot className="h-4 w-4 mt-1 flex-shrink-0" />
+                        )}
                         <p className="text-sm">{message.content}</p>
-                        {message.isUser && <User className="h-4 w-4 mt-1 flex-shrink-0" />}
+                        {message.isUser && (
+                          <User className="h-4 w-4 mt-1 flex-shrink-0" />
+                        )}
                       </div>
                       <p className="text-xs opacity-70 mt-1">
                         {message.timestamp.toLocaleTimeString()}
@@ -173,8 +173,14 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                         <Bot className="h-4 w-4" />
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                          <div
+                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
+                            style={{ animationDelay: '0.1s' }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
+                            style={{ animationDelay: '0.2s' }}
+                          ></div>
                         </div>
                       </div>
                     </div>
@@ -182,7 +188,7 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                 )}
               </div>
             </ScrollArea>
-            
+
             <div className="p-6 border-t">
               <div className="flex space-x-2">
                 <Input
@@ -192,7 +198,10 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                   placeholder="Ask your coach anything..."
                   disabled={isLoading}
                 />
-                <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
+                <Button
+                  onClick={sendMessage}
+                  disabled={isLoading || !inputMessage.trim()}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
