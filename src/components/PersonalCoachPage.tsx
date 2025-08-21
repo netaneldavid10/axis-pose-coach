@@ -73,17 +73,17 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
     setIsLoading(true);
 
     try {
-      // ---- קריאה לפונקציית Edge של Supabase בשם "chat" ----
-      // ממליץ לשלוח היסטוריה מצומצמת כדי לא לנפח את הבקשה:
+      // היסטוריה מצומצמת כדי לא לנפח את הבקשה
       const compactHistory = messages.slice(-5).map((m) => ({
         isUser: m.isUser,
         content: m.content,
       }));
 
+      // קריאה ל-Edge Function בשם "chat"
       const { data, error } = await supabase.functions.invoke('chat', {
         body: {
           messages: [{ role: 'user', content: userMessage.content }],
-        userProfile,
+          userProfile,
           conversationHistory: compactHistory,
         },
       });
@@ -103,12 +103,11 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-    } catch (error: any) {
-      console.error('Edge Function error:', error?.message || error);
+    } catch (err: any) {
+      console.error('Edge Function error:', err?.message || err);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content:
-          "I'm having trouble connecting right now. Please try again later!",
+        content: "I'm having trouble connecting right now. Please try again later!",
         isUser: false,
         timestamp: new Date(),
       };
