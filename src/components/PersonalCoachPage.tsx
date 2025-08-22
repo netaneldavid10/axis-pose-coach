@@ -31,6 +31,11 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
+  // ---- הגדרות פונקציה/מפתחות ----
+  const FUNCTION_URL =
+    'https://ixtpwxqpzvrlsxdcxpe.functions.supabase.co/functions/v1/chat'; // שם הפונקציה: chat
+  const SUPABASE_ANON_KEY = 'PASTE_YOUR_ANON_KEY_HERE'; // Settings → API → anon public
+
   useEffect(() => {
     loadUserProfile();
   }, []);
@@ -73,43 +78,40 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
     setIsLoading(true);
 
     try {
-      // היסטוריה מצומצמת כדי לא לנפח את הבקשה
+      // היסטוריה מצומצמת
       const compactHistory = messages.slice(-5).map((m) => ({
         isUser: m.isUser,
         content: m.content,
       }));
 
-      // אם הפונקציה דורשת JWT – נצרף אותו אוטומטית
+      // נצרף JWT אם המשתמש מחובר; אחרת נשתמש באנון-קי
       const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
+      const jwt = sessionData?.session?.access_token;
 
-      const invokeOptions: any = {
-        body: {
+      const res = await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Supabase Functions דורשות אחד הכותרים הבאים:
+          // אם Verify JWT כבוי: מספיק anon key
+          // אם Verify JWT דולק: עדיף JWT של המשתמש
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${jwt ?? SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
           messages: [{ role: 'user', content: userMessage.content }],
           userProfile,
           conversationHistory: compactHistory,
-        },
-      };
-      if (token) {
-        invokeOptions.headers = { Authorization: `Bearer ${token}` };
+        }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        console.error('Edge Function HTTP error:', res.status, txt);
+        throw new Error(`HTTP ${res.status}`);
       }
 
-      // ❗️קריאה לפונקציית ה-Edge בשם "chat"
-      const { data, error } = await supabase.functions.invoke('chat', invokeOptions);
-
-      if (error) {
-        console.error('invoke(chat) error:', error);
-        // נסה לחלץ גוף שגיאה מה-Response הפנימי של supabase-js
-        const ctx: any = (error as any)?.context;
-        if (ctx && typeof ctx.text === 'function') {
-          try {
-            const bodyText = await ctx.text();
-            console.error('Edge Function HTTP error body:', bodyText);
-          } catch {}
-        }
-        throw error;
-      }
-
+      const data = await res.json();
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         content:
@@ -121,20 +123,13 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (err: any) {
-      // לוג שגיאה מפורט לקונסול כדי לדעת למה זה נכשל (401/500 וכו')
-      try {
-        if (err && typeof err.text === 'function') {
-          const raw = await err.text();
-          console.error('Edge Function raw error response:', raw);
-        }
-      } catch {}
-      console.error('Edge Function error (catch):', err?.message || err);
-
+      console.error('Edge Function error (fetch):', err?.message || err);
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
-          content: "I'm having trouble connecting right now. Please try again later!",
+          content:
+            "I'm having trouble connecting right now. Please try again later!",
           isUser: false,
           timestamp: new Date(),
         },
@@ -201,9 +196,9 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
                       <div className="flex items-center space-x-2">
                         <Bot className="h-4 w-4" />
                         <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                          <div className="w-2 h-2 rounded-full animate-bounce bg-primary"></div>
+                          <div className="w-2 h-2 rounded-full animate-bounce bg-primary" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 rounded-full animate-bounce bg-primary" style={{ animationDelay: '0.2s' }}></div>
                         </div>
                       </div>
                     </div>
