@@ -79,17 +79,34 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
         content: m.content,
       }));
 
-      // קריאה ל-Edge Function בשם "chat"
-      const { data, error } = await supabase.functions.invoke('chat', {
+      // אם הפונקציה דורשת JWT – נצרף אותו אוטומטית
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      const invokeOptions: any = {
         body: {
           messages: [{ role: 'user', content: userMessage.content }],
           userProfile,
           conversationHistory: compactHistory,
         },
-      });
+      };
+      if (token) {
+        invokeOptions.headers = { Authorization: `Bearer ${token}` };
+      }
+
+      // ❗️קריאה לפונקציית ה-Edge בשם "chat"
+      const { data, error } = await supabase.functions.invoke('chat', invokeOptions);
 
       if (error) {
         console.error('invoke(chat) error:', error);
+        // נסה לחלץ גוף שגיאה מה-Response הפנימי של supabase-js
+        const ctx: any = (error as any)?.context;
+        if (ctx && typeof ctx.text === 'function') {
+          try {
+            const bodyText = await ctx.text();
+            console.error('Edge Function HTTP error body:', bodyText);
+          } catch {}
+        }
         throw error;
       }
 
@@ -104,14 +121,24 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (err: any) {
-      console.error('Edge Function error:', err?.message || err);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "I'm having trouble connecting right now. Please try again later!",
-        isUser: false,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      // לוג שגיאה מפורט לקונסול כדי לדעת למה זה נכשל (401/500 וכו')
+      try {
+        if (err && typeof err.text === 'function') {
+          const raw = await err.text();
+          console.error('Edge Function raw error response:', raw);
+        }
+      } catch {}
+      console.error('Edge Function error (catch):', err?.message || err);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          content: "I'm having trouble connecting right now. Please try again later!",
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
