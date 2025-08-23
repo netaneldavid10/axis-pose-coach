@@ -1,3 +1,4 @@
+// PersonalCoachPage.tsx
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Send, Bot, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -5,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
+// אם יש צורך ב-Provider לשפה, השאר כפי שהוספת
 
 interface Message {
   id: string;
@@ -17,14 +19,15 @@ interface PersonalCoachPageProps {
   onBack: () => void;
 }
 
-// === הגדרות קריטיות ===
-// זה ה-URL ששלחת (פונקציה בשם quick-endpoint). אם הפונקציה שלך נקראת אחרת (למשל chat) – החלף כאן ל-URL שלה.
+// === קונפיג לקוח ===
+// ✅ URL מדויק לפרויקט שלך עם דומיין הפונקציות
 const FUNCTION_URL =
-  'https://itxtpwxqpzxrlsxdcxpe.supabase.co';
+  'https://ixtpwxqpzvrlsxdcxpe.functions.supabase.co/functions/v1/quick-endpoint';
 
-// הדבק כאן את ה-anon public key מה-Supabase (Settings → API → Project API keys → anon public)
-const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY_HERE';
-// =======================
+// ✅ anon public key – לפי מה שסיפקת
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0eHRwd3hxcHp4cmxzeGRjeHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM2OTc2MzEsImV4cCI6MjA2OTI3MzYzMX0.ptDNsPDZSlApIw7kWvbjYGsa_4VAfaAQ5G2WyK7mk7c';
+// =====================
 
 export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
   const [messages, setMessages] = useState<Message[]>([
@@ -82,13 +85,12 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
     setIsLoading(true);
 
     try {
-      // היסטוריה מצומצמת לשמירה על בקשה קלה
       const compactHistory = messages.slice(-5).map(m => ({
         isUser: m.isUser,
         content: m.content,
       }));
 
-      // נצרף JWT אם המשתמש מחובר; אחרת נשלח את ה-anon key
+      // אם המשתמש מחובר, נשתמש ב-JWT; אחרת ב-anon
       const { data: sessionData } = await supabase.auth.getSession();
       const jwt = sessionData?.session?.access_token;
 
