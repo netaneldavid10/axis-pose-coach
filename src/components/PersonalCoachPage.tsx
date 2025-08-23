@@ -23,7 +23,7 @@ const FUNCTION_URL =
   'https://itxtpwxqpzxrlsxdcxpe.supabase.co/functions/v1/quick-endpoint';
 
 // הדבק כאן את ה-anon public key מה-Supabase (Settings → API → Project API keys → anon public)
-const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY_HERE';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0eHRwd3hxcHp4cmxzeGRjeHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM2OTc2MzEsImV4cCI6MjA2OTI3MzYzMX0.ptDNsPDZSlApIw7kWvbjYGsa_4VAfaAQ5G2WyK7mk7c';
 // =======================
 
 export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
