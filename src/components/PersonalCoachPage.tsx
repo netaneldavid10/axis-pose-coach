@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 
+// 👇 הוסף את ה-Provider (עדכן נתיב אם צריך)
+import { LanguageProvider } from '@/context/language-context';
+
 interface Message {
   id: string;
   content: string;
@@ -18,12 +21,10 @@ interface PersonalCoachPageProps {
 }
 
 // === הגדרות קריטיות ===
-// זה ה-URL ששלחת (פונקציה בשם quick-endpoint). אם הפונקציה שלך נקראת אחרת (למשל chat) – החלף כאן ל-URL שלה.
 const FUNCTION_URL =
   'https://itxtpwxqpzxrlsxdcxpe.supabase.co/functions/v1/quick-endpoint';
 
-// הדבק כאן את ה-anon public key מה-Supabase (Settings → API → Project API keys → anon public)
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0eHRwd3hxcHp4cmxzeGRjeHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM2OTc2MzEsImV4cCI6MjA2OTI3MzYzMX0.ptDNsPDZSlApIw7kWvbjYGsa_4VAfaAQ5G2WyK7mk7c';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY_HERE';
 // =======================
 
 export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
@@ -82,13 +83,11 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
     setIsLoading(true);
 
     try {
-      // היסטוריה מצומצמת לשמירה על בקשה קלה
       const compactHistory = messages.slice(-5).map(m => ({
         isUser: m.isUser,
         content: m.content,
       }));
 
-      // נצרף JWT אם המשתמש מחובר; אחרת נשלח את ה-anon key
       const { data: sessionData } = await supabase.auth.getSession();
       const jwt = sessionData?.session?.access_token;
 
@@ -149,78 +148,80 @@ export const PersonalCoachPage = ({ onBack }: PersonalCoachPageProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={onBack} className="p-2">
-            <ArrowLeft className="h-6 w-6" />
-          </Button>
-          <h1 className="text-2xl font-bold">Personal Coach</h1>
-          <div />
-        </div>
+    <LanguageProvider>
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <Button variant="ghost" onClick={onBack} className="p-2">
+              <ArrowLeft className="h-6 w-6" />
+            </Button>
+            <h1 className="text-2xl font-bold">Personal Coach</h1>
+            <div />
+          </div>
 
-        <Card className="h-[calc(100vh-12rem)]">
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Bot className="h-5 w-5" />
-              <span>AI Fitness Coach</span>
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col h-full p-0">
-            <ScrollArea className="flex-1 p-6">
-              <div className="space-y-4">
-                {messages.map(message => (
-                  <div key={message.id} className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`max-w-[80%] rounded-lg p-3 ${
-                        message.isUser ? 'bg-primary text-primary-foreground ml-4' : 'bg-muted mr-4'
-                      }`}
-                    >
-                      <div className="flex items-start space-x-2">
-                        {!message.isUser && <Bot className="h-4 w-4 mt-1 flex-shrink-0" />}
-                        <p className="text-sm">{message.content}</p>
-                        {message.isUser && <User className="h-4 w-4 mt-1 flex-shrink-0" />}
+          <Card className="h-[calc(100vh-12rem)]">
+            <CardHeader>
+              <div className="flex items-center space-x-2">
+                <Bot className="h-5 w-5" />
+                <span>AI Fitness Coach</span>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col h-full p-0">
+              <ScrollArea className="flex-1 p-6">
+                <div className="space-y-4">
+                  {messages.map(message => (
+                    <div key={message.id} className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[80%] rounded-lg p-3 ${
+                          message.isUser ? 'bg-primary text-primary-foreground ml-4' : 'bg-muted mr-4'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-2">
+                          {!message.isUser && <Bot className="h-4 w-4 mt-1 flex-shrink-0" />}
+                          <p className="text-sm">{message.content}</p>
+                          {message.isUser && <User className="h-4 w-4 mt-1 flex-shrink-0" />}
+                        </div>
+                        <p className="text-xs opacity-70 mt-1">
+                          {message.timestamp.toLocaleTimeString()}
+                        </p>
                       </div>
-                      <p className="text-xs opacity-70 mt-1">
-                        {message.timestamp.toLocaleTimeString()}
-                      </p>
                     </div>
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-lg p-3 mr-4">
-                      <div className="flex items-center space-x-2">
-                        <Bot className="h-4 w-4" />
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 rounded-full animate-bounce bg-primary"></div>
-                          <div className="w-2 h-2 rounded-full animate-bounce bg-primary" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 rounded-full animate-bounce bg-primary" style={{ animationDelay: '0.2s' }}></div>
+                  ))}
+                  {isLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted rounded-lg p-3 mr-4">
+                        <div className="flex items-center space-x-2">
+                          <Bot className="h-4 w-4" />
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-2 rounded-full animate-bounce bg-primary"></div>
+                            <div className="w-2 h-2 rounded-full animate-bounce bg-primary" style={{ animationDelay: '0.1s' }}></div>
+                            <div className="w-2 h-2 rounded-full animate-bounce bg-primary" style={{ animationDelay: '0.2s' }}></div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+                  )}
+                </div>
+              </ScrollArea>
 
-            <div className="p-6 border-t">
-              <div className="flex space-x-2">
-                <Input
-                  value={inputMessage}
-                  onChange={e => setInputMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask your coach anything..."
-                  disabled={isLoading}
-                />
-                <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
+              <div className="p-6 border-t">
+                <div className="flex space-x-2">
+                  <Input
+                    value={inputMessage}
+                    onChange={e => setInputMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Ask your coach anything..."
+                    disabled={isLoading}
+                  />
+                  <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+    </LanguageProvider>
   );
 };
