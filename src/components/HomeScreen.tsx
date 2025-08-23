@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CircularProgress } from '@/components/ui/circular-progress';
 import { useToast } from '@/components/ui/use-toast';
+import { useLanguage } from '@/lib/language-context';
 import { supabase } from '@/integrations/supabase/client';
 import { Play, Menu, User, BarChart3, Settings, MessageSquare, LogOut } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -36,6 +37,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [currentProgress, setCurrentProgress] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   useEffect(() => {
     loadProfile();
@@ -112,11 +114,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const getMotivationalText = () => {
     const percentage = getProgressPercentage();
-    if (percentage >= 100) return "Goal achieved! 🎉";
-    if (percentage >= 75) return "Almost there! Keep pushing!";
-    if (percentage >= 50) return "Great progress! Keep it up!";
-    if (percentage >= 25) return "You're on the right track!";
-    return "Let's get started!";
+    if (percentage >= 100) return t.home.goalAchieved;
+    if (percentage >= 75) return t.home.almostThere;
+    if (percentage >= 50) return t.home.greatProgress;
+    if (percentage >= 25) return t.home.onRightTrack;
+    return t.home.letsGetStarted;
   };
 
   if (isLoading) {
@@ -137,27 +139,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <Menu className="h-6 w-6" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem onClick={onShowProfile}>
+          <DropdownMenuContent align="start" className="w-56 animate-fade-in">
+            <DropdownMenuItem onClick={onShowProfile} className="hover-scale">
               <User className="mr-2 h-4 w-4" />
-              My Profile
+              {t.menu.myProfile}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onShowStats}>
+            <DropdownMenuItem onClick={onShowStats} className="hover-scale">
               <BarChart3 className="mr-2 h-4 w-4" />
-              Statistics Dashboard
+              {t.menu.statisticsDashboard}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onShowCoach}>
+            <DropdownMenuItem onClick={onShowCoach} className="hover-scale">
               <MessageSquare className="mr-2 h-4 w-4" />
-              Personal Coach
+              {t.menu.personalCoach}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onShowSettings}>
+            <DropdownMenuItem onClick={onShowSettings} className="hover-scale">
               <Settings className="mr-2 h-4 w-4" />
-              Settings
+              {t.menu.settings}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onSignOut} className="text-destructive">
+            <DropdownMenuItem onClick={onSignOut} className="text-destructive hover-scale">
               <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
+              {t.menu.signOut}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -172,18 +174,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       {/* Main Content */}
       <main className="px-4 pb-8">
         {/* Welcome Message */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 animate-fade-in">
           <h2 className="text-xl font-semibold text-foreground mb-2">
-            Welcome back, {profile?.first_name || 'User'}!
+            {t.home.welcomeBack}, {profile?.first_name || 'User'}!
           </h2>
           <p className="text-muted-foreground">
-            Ready to crush your fitness goals today?
+            {t.home.readyToCrush}
           </p>
         </div>
 
         {/* Progress Circle */}
         <div className="flex justify-center mb-8">
-          <Card className="p-6 bg-white/50 backdrop-blur-sm border border-white/20 shadow-xl">
+          <Card className="p-6 bg-card/80 backdrop-blur-sm border border-white/20 shadow-xl hover-scale animate-scale-in">
             <CardContent className="p-0">
               <CircularProgress
                 value={currentProgress}
@@ -195,7 +197,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <img 
                     src={axisLogo} 
                     alt="Axis Logo" 
-                    className="w-16 h-16 mx-auto mb-2 opacity-80"
+                    className="w-16 h-16 mx-auto mb-2 opacity-80 hover-scale"
                   />
                   <div className="text-2xl font-bold text-primary">
                     {Math.round(getProgressPercentage())}%
@@ -204,7 +206,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     {currentProgress} / {profile?.workout_goal_value || 0}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {profile?.workout_goal_type === 'workouts' ? 'workouts' : 'calories'} this {profile?.workout_goal_period}
+                    {profile?.workout_goal_type === 'workouts' ? t.home.workouts : t.home.calories} {profile?.workout_goal_period === 'week' ? t.home.thisWeek : t.home.thisMonth}
                   </div>
                 </div>
               </CircularProgress>
@@ -213,41 +215,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
 
         {/* Motivational Text */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 animate-slide-up">
           <p className="text-lg font-medium text-foreground">
             {getMotivationalText()}
           </p>
         </div>
 
         {/* Start Workout Button */}
-        <div className="flex justify-center">
+        <div className="flex justify-center animate-bounce-in">
           <Button
             size="lg"
             onClick={onStartWorkout}
             className="bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white px-8 py-4 text-lg font-semibold rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
           >
             <Play className="h-6 w-6 mr-3" />
-            Start Workout
+            {t.home.startWorkout}
           </Button>
         </div>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-4 mt-8">
-          <Card className="p-4 bg-white/30 backdrop-blur-sm border border-white/20">
+          <Card className="p-4 bg-card/60 backdrop-blur-sm border border-white/20 hover-scale animate-delay-100 animate-slide-up">
             <CardContent className="p-0 text-center">
               <div className="text-2xl font-bold text-primary">
                 {profile?.workout_goal_period === 'week' ? '7' : '30'}
               </div>
-              <div className="text-sm text-muted-foreground">Days left</div>
+              <div className="text-sm text-muted-foreground">{t.home.daysLeft}</div>
             </CardContent>
           </Card>
-          <Card className="p-4 bg-white/30 backdrop-blur-sm border border-white/20">
+          <Card className="p-4 bg-card/60 backdrop-blur-sm border border-white/20 hover-scale animate-delay-200 animate-slide-up">
             <CardContent className="p-0 text-center">
               <div className="text-2xl font-bold text-primary">
                 {Math.max(0, (profile?.workout_goal_value || 0) - currentProgress)}
               </div>
               <div className="text-sm text-muted-foreground">
-                {profile?.workout_goal_type === 'workouts' ? 'Workouts' : 'Calories'} to go
+                {profile?.workout_goal_type === 'workouts' ? t.home.workouts : t.home.calories} {t.home.toGo}
               </div>
             </CardContent>
           </Card>

@@ -72,7 +72,7 @@ All colors MUST be HSL.
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
 
-    --card: 240 10% 3.9%;
+    --card: 240 5% 8%;
     --card-foreground: 0 0% 98%;
 
     --popover: 240 10% 3.9%;
@@ -83,7 +83,7 @@ All colors MUST be HSL.
     --primary-light: 16 100% 70%;
     --primary-dark: 16 100% 50%;
 
-    --secondary: 240 3.7% 15.9%;
+    --secondary: 240 5% 12%;
     --secondary-foreground: 0 0% 98%;
 
     --muted: 240 3.7% 15.9%;

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { getTranslation } from '@/lib/translations';
+import { useLanguage } from '@/lib/language-context';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -18,20 +18,16 @@ interface SettingsPageProps {
 
 export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
   const [darkMode, setDarkMode] = useState(false);
-  const [language, setLanguage] = useState('en');
   const [volume, setVolume] = useState([70]);
   const { toast } = useToast();
-  
-  const t = getTranslation(language);
+  const { language, setLanguage, t } = useLanguage();
 
   useEffect(() => {
     // Load saved settings from localStorage
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    const savedLanguage = localStorage.getItem('language') || 'en';
     const savedVolume = parseInt(localStorage.getItem('volume') || '70');
 
     setDarkMode(savedDarkMode);
-    setLanguage(savedLanguage);
     setVolume([savedVolume]);
 
     // Apply dark mode
@@ -57,17 +53,6 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
 
   const handleLanguageChange = (newLanguage: string) => {
     setLanguage(newLanguage);
-    localStorage.setItem('language', newLanguage);
-    
-    // Apply RTL for Hebrew
-    if (newLanguage === 'he') {
-      document.documentElement.setAttribute('dir', 'rtl');
-      document.documentElement.classList.add('rtl');
-    } else {
-      document.documentElement.setAttribute('dir', 'ltr');
-      document.documentElement.classList.remove('rtl');
-    }
-    
     toast({ title: `Language changed to ${newLanguage === 'en' ? 'English' : 'Hebrew'}` });
   };
 

@@ -31,10 +31,38 @@ export interface Translations {
   };
   home: {
     welcome: string;
+    welcomeBack: string;
     startWorkout: string;
     viewStats: string;
     profile: string;
     personalCoach: string;
+    readyToCrush: string;
+    daysLeft: string;
+    toGo: string;
+    workouts: string;
+    calories: string;
+    thisWeek: string;
+    thisMonth: string;
+    goalAchieved: string;
+    almostThere: string;
+    greatProgress: string;
+    onRightTrack: string;
+    letsGetStarted: string;
+  };
+  menu: {
+    myProfile: string;
+    statisticsDashboard: string;
+    personalCoach: string;
+    settings: string;
+    signOut: string;
+  };
+  general: {
+    loading: string;
+    error: string;
+    success: string;
+    cancel: string;
+    save: string;
+    back: string;
   };
 }
 
@@ -72,10 +100,38 @@ export const translations: Record<string, Translations> = {
     },
     home: {
       welcome: "Welcome",
+      welcomeBack: "Welcome back",
       startWorkout: "Start Workout",
       viewStats: "View Statistics",
       profile: "Profile",
-      personalCoach: "Personal Coach"
+      personalCoach: "Personal Coach",
+      readyToCrush: "Ready to crush your fitness goals today?",
+      daysLeft: "Days left",
+      toGo: "to go",
+      workouts: "workouts",
+      calories: "calories",
+      thisWeek: "this week",
+      thisMonth: "this month",
+      goalAchieved: "Goal achieved! 🎉",
+      almostThere: "Almost there! Keep pushing!",
+      greatProgress: "Great progress! Keep it up!",
+      onRightTrack: "You're on the right track!",
+      letsGetStarted: "Let's get started!"
+    },
+    menu: {
+      myProfile: "My Profile",
+      statisticsDashboard: "Statistics Dashboard",
+      personalCoach: "Personal Coach",
+      settings: "Settings",
+      signOut: "Sign Out"
+    },
+    general: {
+      loading: "Loading...",
+      error: "Error",
+      success: "Success",
+      cancel: "Cancel",
+      save: "Save",
+      back: "Back"
     }
   },
   he: {
@@ -111,10 +167,38 @@ export const translations: Record<string, Translations> = {
     },
     home: {
       welcome: "ברוך הבא",
+      welcomeBack: "ברוך שובך",
       startWorkout: "התחל אימון",
       viewStats: "הצג סטטיסטיקות",
       profile: "פרופיל",
-      personalCoach: "מאמן אישי"
+      personalCoach: "מאמן אישי",
+      readyToCrush: "מוכן לכבוש את יעדי הכושר שלך היום?",
+      daysLeft: "ימים נותרו",
+      toGo: "נותרים",
+      workouts: "אימונים",
+      calories: "קלוריות",
+      thisWeek: "השבוע",
+      thisMonth: "החודש",
+      goalAchieved: "היעד הושג! 🎉",
+      almostThere: "כמעט שם! המשך לדחוף!",
+      greatProgress: "התקדמות נהדרת! תמשיך כך!",
+      onRightTrack: "אתה בדרך הנכונה!",
+      letsGetStarted: "בואו נתחיל!"
+    },
+    menu: {
+      myProfile: "הפרופיל שלי",
+      statisticsDashboard: "לוח סטטיסטיקות",
+      personalCoach: "מאמן אישי",
+      settings: "הגדרות",
+      signOut: "התנתק"
+    },
+    general: {
+      loading: "טוען...",
+      error: "שגיאה",
+      success: "הצלחה",
+      cancel: "בטל",
+      save: "שמור",
+      back: "חזור"
     }
   }
 };
