@@ -256,7 +256,7 @@ export const translations: Record<string, Translations> = {
       personalCoach: "מאמן אישי",
       readyToCrush: "מוכן לכבוש את יעדי הכושר שלך היום?",
       daysLeft: "ימים נותרו",
-      toGo: "נותרים",
+      toGo: "",
       workouts: "אימונים",
       calories: "קלוריות נותרו",
       thisWeek: "השבוע",
