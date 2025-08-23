@@ -59,6 +59,27 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
   const handleVolumeChange = (newVolume: number[]) => {
     setVolume(newVolume);
     localStorage.setItem('volume', newVolume[0].toString());
+    
+    // Play test sound at the selected volume
+    playVolumeTestSound(newVolume[0] / 100);
+  };
+
+  const playVolumeTestSound = (volumeLevel: number) => {
+    // Create a simple beep sound for volume testing
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // 800Hz beep
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(volumeLevel * 0.3, audioContext.currentTime + 0.1); // Fade in
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3); // Fade out
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
   };
 
   const handleSignOut = async () => {
