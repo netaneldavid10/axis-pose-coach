@@ -20,7 +20,7 @@ interface PersonalCoachPageProps {
 // === הגדרות קריטיות ===
 // זה ה-URL ששלחת (פונקציה בשם quick-endpoint). אם הפונקציה שלך נקראת אחרת (למשל chat) – החלף כאן ל-URL שלה.
 const FUNCTION_URL =
-  'https://itxtpwxqpzxrlsxdcxpe.supabase.co/functions/v1/chat';
+  'https://itxtpwxqpzxrlsxdcxpe.functions.supabase.co/functions/v1/chat';
 
 // הדבק כאן את ה-anon public key מה-Supabase (Settings → API → Project API keys → anon public)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0eHRwd3hxcHp4cmxzeGRjeHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM2OTc2MzEsImV4cCI6MjA2OTI3MzYzMX0.ptDNsPDZSlApIw7kWvbjYGsa_4VAfaAQ5G2WyK7mk7c';
