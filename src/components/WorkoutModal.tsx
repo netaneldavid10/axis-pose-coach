@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Target, List } from 'lucide-react';
+import { useLanguage } from '@/lib/language-context';
 
 interface WorkoutModalProps {
   isOpen: boolean;
@@ -17,15 +18,17 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
   onSingleExercise,
   onWorkoutRoutine
 }) => {
+  const { t } = useLanguage();
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold">
-            Choose Workout Type
+            {t.workoutModal.title}
           </DialogTitle>
           <DialogDescription className="text-center">
-            How would you like to train today?
+            {t.workoutModal.description}
           </DialogDescription>
         </DialogHeader>
 
@@ -36,9 +39,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           >
             <CardContent className="p-0 text-center">
               <Target className="h-12 w-12 text-primary mx-auto mb-3" />
-              <h3 className="text-lg font-semibold mb-2">Single Exercise</h3>
+              <h3 className="text-lg font-semibold mb-2">{t.workoutModal.singleExercise}</h3>
               <p className="text-sm text-muted-foreground">
-                Focus on one exercise with AI form tracking
+                {t.workoutModal.singleExerciseDesc}
               </p>
             </CardContent>
           </Card>
@@ -49,9 +52,9 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
           >
             <CardContent className="p-0 text-center">
               <List className="h-12 w-12 text-primary mx-auto mb-3" />
-              <h3 className="text-lg font-semibold mb-2">Workout Routine</h3>
+              <h3 className="text-lg font-semibold mb-2">{t.workoutModal.workoutRoutine}</h3>
               <p className="text-sm text-muted-foreground">
-                Complete a sequence of exercises
+                {t.workoutModal.workoutRoutineDesc}
               </p>
             </CardContent>
           </Card>
@@ -59,7 +62,7 @@ export const WorkoutModal: React.FC<WorkoutModalProps> = ({
 
         <div className="flex justify-center pt-4">
           <Button variant="outline" onClick={onClose} className="w-full">
-            Cancel
+            {t.workoutModal.cancel}
           </Button>
         </div>
       </DialogContent>

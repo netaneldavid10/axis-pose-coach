@@ -65,21 +65,32 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
   };
 
   const playVolumeTestSound = (volumeLevel: number) => {
-    // Create a simple beep sound for volume testing
+    // Create a more pleasant notification sound
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
+    
+    // Create two oscillators for a pleasant chord
+    const osc1 = audioContext.createOscillator();
+    const osc2 = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
-    oscillator.connect(gainNode);
+    // Connect oscillators to gain node
+    osc1.connect(gainNode);
+    osc2.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // 800Hz beep
-    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(volumeLevel * 0.3, audioContext.currentTime + 0.1); // Fade in
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3); // Fade out
+    // Pleasant frequencies that form a major third
+    osc1.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+    osc2.frequency.setValueAtTime(659.25, audioContext.currentTime); // E5
     
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.3);
+    // Smooth volume envelope
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(volumeLevel * 0.15, audioContext.currentTime + 0.05); // Gentle fade in
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.4); // Smooth fade out
+    
+    osc1.start(audioContext.currentTime);
+    osc2.start(audioContext.currentTime);
+    osc1.stop(audioContext.currentTime + 0.4);
+    osc2.stop(audioContext.currentTime + 0.4);
   };
 
   const handleSignOut = async () => {
@@ -178,7 +189,7 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
                     step={5}
                     className="w-full"
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1" dir="ltr">
                     <span>0%</span>
                     <span>{volume[0]}%</span>
                     <span>100%</span>

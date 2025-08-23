@@ -96,6 +96,15 @@ export interface Translations {
     burpeesDesc: string;
     mountainClimbersDesc: string;
   };
+  workoutModal: {
+    title: string;
+    description: string;
+    singleExercise: string;
+    singleExerciseDesc: string;
+    workoutRoutine: string;
+    workoutRoutineDesc: string;
+    cancel: string;
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -175,6 +184,15 @@ export const translations: Record<string, Translations> = {
       year: "Year",
       formAccuracy: "Form Accuracy Over Time",
       pushupsCount: "Pushups Count"
+    },
+    workoutModal: {
+      title: "Choose Workout Type",
+      description: "How would you like to train today?",
+      singleExercise: "Single Exercise",
+      singleExerciseDesc: "Focus on one exercise with AI form tracking",
+      workoutRoutine: "Workout Routine", 
+      workoutRoutineDesc: "Complete a sequence of exercises",
+      cancel: "Cancel"
     },
     exercises: {
       chooseExercise: "Choose Exercise",
@@ -274,6 +292,15 @@ export const translations: Record<string, Translations> = {
       year: "שנה",
       formAccuracy: "דיוק תנוחה לאורך זמן",
       pushupsCount: "מספר שכיבות סמיכה"
+    },
+    workoutModal: {
+      title: "בחר סוג אימון",
+      description: "איך היית רוצה להתאמן היום?",
+      singleExercise: "תרגיל בודד",
+      singleExerciseDesc: "התמקד בתרגיל אחד עם מעקב AI אחר הטכניקה",
+      workoutRoutine: "שגרת אימון",
+      workoutRoutineDesc: "השלם רצף של תרגילים",
+      cancel: "בטל"
     },
     exercises: {
       chooseExercise: "בחר תרגיל",
