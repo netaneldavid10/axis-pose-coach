@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getTranslation } from '@/lib/translations';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -20,6 +21,8 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
   const [language, setLanguage] = useState('en');
   const [volume, setVolume] = useState([70]);
   const { toast } = useToast();
+  
+  const t = getTranslation(language);
 
   useEffect(() => {
     // Load saved settings from localStorage
@@ -80,29 +83,31 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-background p-6 animate-fade-in">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-8">
-          <Button variant="ghost" onClick={onBack} className="p-2">
+          <Button variant="ghost" onClick={onBack} className="p-2 hover-scale">
             <ArrowLeft className="h-6 w-6" />
           </Button>
-          <h1 className="text-2xl font-bold">Settings</h1>
+          <h1 className="text-2xl font-bold animate-scale-in">{t.settings.title}</h1>
           <div></div>
         </div>
 
         <div className="space-y-6">
           {/* Appearance */}
-          <Card>
+          <Card className="hover-scale transition-all duration-300 hover:shadow-lg">
             <CardHeader>
-              <CardTitle>Appearance</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                {darkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                {t.settings.appearance}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  {darkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
                   <div>
-                    <Label htmlFor="dark-mode">Dark Mode</Label>
-                    <p className="text-sm text-muted-foreground">Toggle dark theme</p>
+                    <Label htmlFor="dark-mode">{t.settings.darkMode}</Label>
+                    <p className="text-sm text-muted-foreground">{t.settings.darkModeDesc}</p>
                   </div>
                 </div>
                 <Switch
@@ -115,17 +120,19 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
           </Card>
 
           {/* Language */}
-          <Card>
+          <Card className="hover-scale transition-all duration-300 hover:shadow-lg">
             <CardHeader>
-              <CardTitle>Language & Region</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Languages className="h-5 w-5" />
+                {t.settings.languageRegion}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <Languages className="h-5 w-5" />
                   <div>
-                    <Label>Language</Label>
-                    <p className="text-sm text-muted-foreground">Select your preferred language</p>
+                    <Label>{t.settings.language}</Label>
+                    <p className="text-sm text-muted-foreground">{t.settings.languageDesc}</p>
                   </div>
                 </div>
                 <Select value={language} onValueChange={handleLanguageChange}>
@@ -142,17 +149,19 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
           </Card>
 
           {/* Audio */}
-          <Card>
+          <Card className="hover-scale transition-all duration-300 hover:shadow-lg">
             <CardHeader>
-              <CardTitle>Audio</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Volume2 className="h-5 w-5" />
+                {t.settings.audio}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <div className="flex items-center space-x-3">
-                  <Volume2 className="h-5 w-5" />
                   <div>
-                    <Label>Voice Feedback Volume</Label>
-                    <p className="text-sm text-muted-foreground">Adjust voice guidance volume</p>
+                    <Label>{t.settings.voiceVolume}</Label>
+                    <p className="text-sm text-muted-foreground">{t.settings.voiceVolumeDesc}</p>
                   </div>
                 </div>
                 <div className="px-3">
@@ -174,18 +183,21 @@ export const SettingsPage = ({ onBack, onSignOut }: SettingsPageProps) => {
           </Card>
 
           {/* Account */}
-          <Card>
+          <Card className="hover-scale transition-all duration-300 hover:shadow-lg">
             <CardHeader>
-              <CardTitle>Account</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <LogOut className="h-5 w-5" />
+                {t.settings.account}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <Button 
                 variant="destructive" 
                 onClick={handleSignOut}
-                className="w-full"
+                className="w-full hover-scale"
               >
                 <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
+                {t.settings.signOut}
               </Button>
             </CardContent>
           </Card>

@@ -74,8 +74,8 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuthSuccess }) => {
       setPendingEmail(email);
       setShowOtpInput(true);
       toast({
-        title: "Verification code sent!",
-        description: "Please check your email for the 6-digit verification code.",
+        title: "Verification email sent!",
+        description: "Please check your email inbox and click the verification link.",
       });
     } catch (error: any) {
       toast({
@@ -291,41 +291,22 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuthSuccess }) => {
               ) : (
                 <div className="space-y-4">
                   <div className="text-center space-y-2">
-                    <h3 className="text-lg font-semibold">Verify Your Email</h3>
+                    <h3 className="text-lg font-semibold">Check Your Email</h3>
                     <p className="text-sm text-muted-foreground">
-                      We've sent a 6-digit verification code to {pendingEmail}
+                      We've sent a verification link to {pendingEmail}. Please check your email and click the link to verify your account.
                     </p>
                   </div>
                   
-                  <form onSubmit={handleOtpVerification} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="otp-code">Verification Code</Label>
-                      <div className="flex justify-center">
-                        <InputOTP
-                          maxLength={6}
-                          value={otpCode}
-                          onChange={(value) => setOtpCode(value)}
-                        >
-                          <InputOTPGroup>
-                            <InputOTPSlot index={0} />
-                            <InputOTPSlot index={1} />
-                            <InputOTPSlot index={2} />
-                            <InputOTPSlot index={3} />
-                            <InputOTPSlot index={4} />
-                            <InputOTPSlot index={5} />
-                          </InputOTPGroup>
-                        </InputOTP>
+                  <div className="space-y-4">
+                    <div className="text-center py-8">
+                      <div className="animate-pulse">
+                        <svg className="w-16 h-16 mx-auto text-primary mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 7.89a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-muted-foreground">Waiting for email verification...</p>
                       </div>
                     </div>
-                    
-                    <Button 
-                      type="submit" 
-                      className="w-full bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary transition-all duration-300"
-                      disabled={isLoading || otpCode.length !== 6}
-                    >
-                      {isLoading ? "Verifying..." : "Verify Code"}
-                    </Button>
-                  </form>
+                  </div>
                   
                   <div className="text-center space-y-2">
                     <p className="text-sm text-muted-foreground">
