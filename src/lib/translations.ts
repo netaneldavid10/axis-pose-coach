@@ -64,6 +64,38 @@ export interface Translations {
     save: string;
     back: string;
   };
+  statistics: {
+    title: string;
+    workouts: string;
+    pushups: string;
+    avgAccuracy: string;
+    week: string;
+    month: string;
+    year: string;
+    formAccuracy: string;
+    pushupsCount: string;
+  };
+  exercises: {
+    chooseExercise: string;
+    back: string;
+    all: string;
+    legs: string;
+    chest: string;
+    core: string;
+    fullBody: string;
+    cardio: string;
+    beginner: string;
+    intermediate: string;
+    advanced: string;
+    reps: string;
+    noExercises: string;
+    squatsDesc: string;
+    pushupsDesc: string;
+    planksDesc: string;
+    lungesDesc: string;
+    burpeesDesc: string;
+    mountainClimbersDesc: string;
+  };
 }
 
 export const translations: Record<string, Translations> = {
@@ -132,6 +164,38 @@ export const translations: Record<string, Translations> = {
       cancel: "Cancel",
       save: "Save",
       back: "Back"
+    },
+    statistics: {
+      title: "Statistics Dashboard",
+      workouts: "Workouts",
+      pushups: "Pushups",
+      avgAccuracy: "Avg Accuracy",
+      week: "Week",
+      month: "Month",
+      year: "Year",
+      formAccuracy: "Form Accuracy Over Time",
+      pushupsCount: "Pushups Count"
+    },
+    exercises: {
+      chooseExercise: "Choose Exercise",
+      back: "Back",
+      all: "All",
+      legs: "Legs",
+      chest: "Chest",
+      core: "Core",
+      fullBody: "Full Body",
+      cardio: "Cardio",
+      beginner: "Beginner",
+      intermediate: "Intermediate",
+      advanced: "Advanced",
+      reps: "reps",
+      noExercises: "No exercises found in this category.",
+      squatsDesc: "Lower body compound movement targeting quads, glutes, and hamstrings",
+      pushupsDesc: "Upper body exercise targeting chest, shoulders, and triceps",
+      planksDesc: "Isometric core exercise for stability and strength",
+      lungesDesc: "Single-leg movement for balance and leg strength",
+      burpeesDesc: "High-intensity full-body exercise combining squat, plank, and jump",
+      mountainClimbersDesc: "Dynamic cardio exercise targeting core and cardiovascular system"
     }
   },
   he: {
@@ -176,7 +240,7 @@ export const translations: Record<string, Translations> = {
       daysLeft: "ימים נותרו",
       toGo: "נותרים",
       workouts: "אימונים",
-      calories: "קלוריות",
+      calories: "קלוריות נותרו",
       thisWeek: "השבוע",
       thisMonth: "החודש",
       goalAchieved: "היעד הושג! 🎉",
@@ -199,6 +263,38 @@ export const translations: Record<string, Translations> = {
       cancel: "בטל",
       save: "שמור",
       back: "חזור"
+    },
+    statistics: {
+      title: "לוח סטטיסטיקות",
+      workouts: "אימונים",
+      pushups: "שכיבות סמיכה",
+      avgAccuracy: "דיוק ממוצע",
+      week: "שבוע",
+      month: "חודש",
+      year: "שנה",
+      formAccuracy: "דיוק תנוחה לאורך זמן",
+      pushupsCount: "מספר שכיבות סמיכה"
+    },
+    exercises: {
+      chooseExercise: "בחר תרגיל",
+      back: "חזור",
+      all: "הכל",
+      legs: "רגליים",
+      chest: "חזה",
+      core: "ליבה",
+      fullBody: "גוף מלא",
+      cardio: "קרדיו",
+      beginner: "מתחיל",
+      intermediate: "בינוני",
+      advanced: "מתקדם",
+      reps: "חזרות",
+      noExercises: "לא נמצאו תרגילים בקטגוריה זו.",
+      squatsDesc: "תנועה מורכבת לגוף תחתון המכווינת לארבעת ראש, עכוז ושרירי הירך האחוריים",
+      pushupsDesc: "תרגיל לגוף עליון המכוון לחזה, כתפיים ושלושת ראש",
+      planksDesc: "תרגיל ליבה איזומטרי ליציבות וכוח",
+      lungesDesc: "תנועה על רגל אחת לאיזון וכוח ברגליים",
+      burpeesDesc: "תרגיל גוף מלא בעצימות גבוהה המשלב כפיפה, פלאנק וקפיצה",
+      mountainClimbersDesc: "תרגיל קרדיו דינמי המכוון לליבה ולמערכת הלב וכלי הדם"
     }
   }
 };

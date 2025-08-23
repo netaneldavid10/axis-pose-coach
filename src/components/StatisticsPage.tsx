@@ -5,12 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/lib/language-context';
 
 interface StatisticsPageProps {
   onBack: () => void;
 }
 
 export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
+  const { t } = useLanguage();
   const [timeRange, setTimeRange] = useState('month');
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [stats, setStats] = useState({
@@ -79,58 +81,58 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
   }));
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-background p-6 animate-fade-in">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
-          <Button variant="ghost" onClick={onBack} className="p-2">
+          <Button variant="ghost" onClick={onBack} className="p-2 hover-scale">
             <ArrowLeft className="h-6 w-6" />
           </Button>
-          <h1 className="text-2xl font-bold">Statistics Dashboard</h1>
+          <h1 className="text-2xl font-bold animate-scale-in">{t.statistics.title}</h1>
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="week">Week</SelectItem>
-              <SelectItem value="month">Month</SelectItem>
-              <SelectItem value="year">Year</SelectItem>
+              <SelectItem value="week">{t.statistics.week}</SelectItem>
+              <SelectItem value="month">{t.statistics.month}</SelectItem>
+              <SelectItem value="year">{t.statistics.year}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mb-8">
-          <Card>
+          <Card className="hover-scale transition-all duration-300 animate-fade-in">
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <Target className="h-8 w-8 text-primary" />
                 <div>
                   <p className="text-2xl font-bold">{stats.totalWorkouts}</p>
-                  <p className="text-sm text-muted-foreground">Workouts</p>
+                  <p className="text-sm text-muted-foreground">{t.statistics.workouts}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="hover-scale transition-all duration-300 animate-fade-in animate-delay-100">
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <Zap className="h-8 w-8 text-primary" />
                 <div>
                   <p className="text-2xl font-bold">{stats.totalPushups}</p>
-                  <p className="text-sm text-muted-foreground">Pushups</p>
+                  <p className="text-sm text-muted-foreground">{t.statistics.pushups}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="hover-scale transition-all duration-300 animate-fade-in animate-delay-200">
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <TrendingUp className="h-8 w-8 text-primary" />
                 <div>
                   <p className="text-2xl font-bold">{Math.round(stats.averageAccuracy)}%</p>
-                  <p className="text-sm text-muted-foreground">Avg Accuracy</p>
+                  <p className="text-sm text-muted-foreground">{t.statistics.avgAccuracy}</p>
                 </div>
               </div>
             </CardContent>
@@ -139,9 +141,9 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="hover-scale transition-all duration-300 animate-fade-in animate-delay-300">
             <CardHeader>
-              <CardTitle>Form Accuracy Over Time</CardTitle>
+              <CardTitle>{t.statistics.formAccuracy}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-64">
@@ -163,9 +165,9 @@ export const StatisticsPage = ({ onBack }: StatisticsPageProps) => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="hover-scale transition-all duration-300 animate-fade-in animate-delay-300">
             <CardHeader>
-              <CardTitle>Pushups Count</CardTitle>
+              <CardTitle>{t.statistics.pushupsCount}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-64">
